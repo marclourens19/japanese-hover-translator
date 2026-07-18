@@ -60,8 +60,8 @@ hiddenimports = [
 ]
 
 a = Analysis(
-    [str(project_dir / "dashboard_app.py")],
-    pathex=[str(project_dir)],
+    [str(project_dir / "src" / "dashboard_app.py")],
+    pathex=[str(project_dir), str(project_dir / "src")],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

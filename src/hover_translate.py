@@ -315,7 +315,10 @@ def app_data_directory():
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
         path = os.path.join(base, "JapaneseHoverTranslator")
     else:
-        path = os.path.dirname(os.path.abspath(__file__))
+        # This file lives in src/, one level below the project root -- go up
+        # twice so source runs keep storing data at the project root (beside
+        # README/requirements.txt), not inside src/ itself.
+        path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -357,7 +360,10 @@ def _find_tessdata_prefix(tesseract_command):
     candidates = [
         configured,
         os.path.join(os.path.dirname(tesseract_command), "tessdata"),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "tessdata"),
+        # This file lives in src/, one level below the project root -- go up
+        # twice so a "tessdata" folder at the project root (as documented in
+        # the README) is still found.
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tessdata"),
         str(Path.home() / ".tessdata"),
     ]
     for candidate in candidates:

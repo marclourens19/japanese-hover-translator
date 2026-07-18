@@ -35,10 +35,16 @@ class TranslationSetupError(RuntimeError):
 
 
 def resource_root():
-    """Source checkout root, or PyInstaller's extracted data root."""
+    """Source checkout root, or PyInstaller's extracted data root.
+
+    This file lives in src/, one level below the project root -- .parent.parent
+    (not .parent) so bundled_model_path()/dictionary_lookup.bundled_dictionary_path()
+    keep finding models/ and data/ at the project root, where the PyInstaller
+    spec's `datas` list also places them inside a packaged build.
+    """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)
-    return Path(__file__).resolve().parent
+    return Path(__file__).resolve().parent.parent
 
 
 def bundled_model_path():

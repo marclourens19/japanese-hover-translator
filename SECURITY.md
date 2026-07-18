@@ -17,7 +17,7 @@ app's actual data flow and how to report a real security issue.
   OCR), then restores whatever was on the clipboard before. Known
   terminal/console window classes are explicitly skipped, since Ctrl+C means
   "send SIGINT" there, not "copy" — see `CONSOLE_WINDOW_CLASSES` in
-  `hover_translate.py`. This only ever reads a selection you already made in
+  `src/hover_translate.py`. This only ever reads a selection you already made in
   the foreground window; it does not poll or monitor the clipboard
   otherwise.
 - **Network.** Single words that resolve to a JMdict entry are looked up
@@ -44,7 +44,7 @@ sensitive). Everything else stays local.
 If you use the Tesseract OCR backend, this app invokes whatever
 `tesseract.exe` it discovers on `PATH`, in common install directories, or via
 the `TESSERACT_CMD` environment variable (see `_find_tesseract_command` in
-`hover_translate.py`). It does not verify the binary's authenticity beyond
+`src/hover_translate.py`). It does not verify the binary's authenticity beyond
 that discovery step. This is standard behavior for any tool that shells out
 to a system-installed dependency, but it does mean the app trusts whatever
 executable answers to that name/path on your system — install Tesseract only

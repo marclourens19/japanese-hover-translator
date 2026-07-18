@@ -15,7 +15,7 @@ light-mode desktop dashboard — no cloud account, API key, or subscription requ
 ![Pinned hover popup](docs/hover-popup.png)
 
 **Status:** actively developed, expect rough edges. Running from source
-(`python dashboard_app.py`) leaves a console window open in the background, since
+(`python src/dashboard_app.py`) leaves a console window open in the background, since
 `python.exe` always attaches one — grab a [packaged release](../../releases) instead if
 you don't want that; it opens with no console at all.
 
@@ -111,7 +111,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python dashboard_app.py
+python src\dashboard_app.py
 ```
 
 No API key or separate dictionary/model download is required. The first dependency
@@ -138,7 +138,7 @@ To force a backend while troubleshooting:
 
 ```powershell
 $env:JAPANESE_HOVER_OCR_BACKEND = "windows"   # or "tesseract"
-python dashboard_app.py
+python src\dashboard_app.py
 ```
 
 Remove the variable to return to automatic selection.
@@ -181,7 +181,7 @@ The regression suite uses Python's standard-library `unittest`; no test-only pac
 required:
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 ```
 
 `run_tests.cmd` runs the same command. The suite covers cursor-anchored OCR rejection,
@@ -256,26 +256,35 @@ to report an actual security issue.
 
 ## Project layout
 
-- `app_logging.py` — rotating diagnostics and uncaught-exception reporting
-- `tests/` — deterministic resilience and pure-logic regression suite
-- `run_tests.cmd` — one-command Windows test runner
+```
+japanese-hover-translator/
+├── src/                          application source (see below)
+├── tests/                        unittest regression suite
+├── data/                         bundled JMdict database + its licenses
+├── models/                       bundled offline translation model
+├── docs/                         README screenshots
+├── scripts/                      JMdict build/update tooling
+├── japanese_hover_translator.spec   PyInstaller build definition
+├── build_release.ps1             one-command Windows bundle build
+├── run_tests.cmd / run_tests.ps1 one-command test runner
+└── requirements*.txt
+```
 
-- `dashboard_app.py` — primary GUI and entry point
+`src/`:
+
+- `dashboard_app.py` — primary GUI and entry point (`python src/dashboard_app.py`)
 - `hover_translate.py` — hover worker, OCR backends, overlay, configuration, and storage
 - `dictionary_lookup.py` — indexed local JMdict lookup and learner-friendly formatting
 - `phrase_translation.py` — cached Google phrase translation with bounded offline fallback
 - `offline_translation.py` — local OPUS-MT runtime, output cleanup, and caches
 - `spaced_repetition.py` — deterministic SM-2 review scheduling and date helpers
-- `data/jmdict_english.sqlite3` — bundled English JMdict database
-- `scripts/update_jmdict.ps1` — downloads and rebuilds the latest English JMdict release
-- `models/opus-mt-ja-en-ct2-int8` — bundled quantized Japanese-to-English model
-- `japanese_hover_translator.spec` — reproducible Windows folder-bundle definition
+- `app_logging.py` — rotating diagnostics and uncaught-exception reporting
 - `study_app.py` — legacy entry point that redirects to the primary dashboard
 
 Every module above has a docstring explaining its role, and every non-trivial
 class/method has one too — start with the class docstrings on `DashboardApp`
-(in `dashboard_app.py`) and `HoverTranslator` (in `hover_translate.py`) for
-the two biggest pieces.
+(in `src/dashboard_app.py`) and `HoverTranslator` (in `src/hover_translate.py`)
+for the two biggest pieces.
 
 ## Contributing
 

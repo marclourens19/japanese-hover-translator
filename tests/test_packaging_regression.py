@@ -34,7 +34,8 @@ import sys
 import unittest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-HOVER_TRANSLATE_PATH = PROJECT_ROOT / "hover_translate.py"
+SRC_DIR = PROJECT_ROOT / "src"
+HOVER_TRANSLATE_PATH = SRC_DIR / "hover_translate.py"
 SPEC_PATH = PROJECT_ROOT / "japanese_hover_translator.spec"
 
 
@@ -94,7 +95,7 @@ class PackagingDllOrderRegressionTests(unittest.TestCase):
         )
         result = subprocess.run(
             [sys.executable, "-c", probe],
-            cwd=str(PROJECT_ROOT),
+            cwd=str(SRC_DIR),
             capture_output=True,
             text=True,
             timeout=60,

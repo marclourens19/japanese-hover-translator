@@ -17,4 +17,5 @@ tessdata/
 venv/
 .vscode/
 .idea/
+.claude/
 Thumbs.db

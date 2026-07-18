@@ -15,7 +15,12 @@ import sqlite3
 import tkinter as tk
 from tkinter import ttk
 
-STUDY_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "study_words.db")
+# This file lives in src/, one level below the project root -- go up twice so
+# this (unreachable -- see StudyApp below) constant would still point at the
+# same study_words.db hover_translate.STUDY_DB_PATH does, for consistency.
+STUDY_DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "study_words.db"
+)
 
 BG_COLOR = "#14141f"
 PANEL_COLOR = "#1c1c2b"

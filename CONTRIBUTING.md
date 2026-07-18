@@ -12,10 +12,10 @@ in the README, including `git lfs install` before cloning — the bundled JMdict
 database and translation model are tracked with Git LFS, and a clone without
 it gets small pointer files instead of working data.
 
-Run the app with `python dashboard_app.py` and the test suite with:
+Run the app with `python src/dashboard_app.py` and the test suite with:
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 ```
 
 or `run_tests.cmd`. All 62+ tests should pass before and after your change.
@@ -55,7 +55,7 @@ the overall data flow before diving into any one file.
   see `HoverTranslator._translation_loop`'s docstring. If you're touching
   that path, keep that property: log and degrade rather than letting an
   exception kill a background thread.
-- **Don't reintroduce the MSVCP140 packaged-build crash.** `hover_translate.py`
+- **Don't reintroduce the MSVCP140 packaged-build crash.** `src/hover_translate.py`
   imports `offline_translation` (which pulls in `ctranslate2`) eagerly at
   module level, and every `winrt` import stays lazy (inside a function). This
   ordering is load-bearing — see the comment above the `offline_translation`
@@ -66,8 +66,8 @@ the overall data flow before diving into any one file.
   `tests/test_packaging_regression.py`, `tests/test_translator_stop.py`,
   `tests/test_clipboard_resilience.py`).
 - **New behavior should ship with a test where practical.** The pure-logic
-  modules (`spaced_repetition.py`, the OCR filtering functions in
-  `hover_translate.py`) are the easiest to test without touching Tk or the
+  modules (`src/spaced_repetition.py`, the OCR filtering functions in
+  `src/hover_translate.py`) are the easiest to test without touching Tk or the
   OS; see the existing tests in `tests/` for the established mocking
   patterns (e.g. `tests/test_windows_ocr.py` for mocking `winrt`).
 

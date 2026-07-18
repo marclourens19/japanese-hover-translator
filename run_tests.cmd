@@ -1,4 +1,7 @@
 @echo off
 cd /d "%~dp0"
-python -m unittest discover -s tests -v
+rem -t . matters: without it, unittest treats tests/ itself as the top-level
+rem directory and never runs tests/__init__.py (which puts src/ on sys.path)
+rem before importing test modules -- every `import hover_translate` would fail.
+python -m unittest discover -s tests -t . -v
 if errorlevel 1 exit /b %errorlevel%
