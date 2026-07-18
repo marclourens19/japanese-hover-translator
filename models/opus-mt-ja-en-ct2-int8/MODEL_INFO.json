@@ -1,0 +1,9 @@
+{
+  "model_id": "Helsinki-NLP/opus-mt-ja-en",
+  "model_revision": "main",
+  "conversion": "CTranslate2 int8",
+  "source_language": "ja",
+  "target_language": "en",
+  "license": "Apache-2.0",
+  "source_url": "https://huggingface.co/Helsinki-NLP/opus-mt-ja-en"
+}

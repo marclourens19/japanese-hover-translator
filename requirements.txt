@@ -1,0 +1,15 @@
+ctranslate2==4.8.1
+deep-translator==1.11.4
+fugashi[unidic-lite]>=1.4,<2
+mss>=10,<11
+Pillow>=11,<13
+pynput>=1.8,<2
+pyperclip>=1.9,<2
+pytesseract>=0.3.13,<0.4
+sentencepiece==0.2.2
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.Globalization==3.2.1
+winrt-Windows.Graphics.Imaging==3.2.1
+winrt-Windows.Media.Ocr==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
