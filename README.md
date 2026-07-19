@@ -12,7 +12,7 @@ furigana, dictionary-form breakdowns, pin/save hotkeys, SM-2 spaced repetition, 
 light-mode desktop dashboard — no cloud account, API key, or subscription required.
 
 <p align="center">
-  <img src="docs/hover-popup.png" alt="Hover popup with furigana, translation, and dictionary form" width="100%">
+  <img src="docs/demo.gif" alt="Selecting a Japanese sentence on Wikipedia and the popup showing furigana, a live translation, and dictionary forms" width="100%">
 </p>
 <table>
   <tr>
