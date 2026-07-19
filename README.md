@@ -165,6 +165,23 @@ run this at least monthly before publishing a new release:
 .\scripts\update_jmdict.ps1
 ```
 
+### Publishing a release
+
+Pushing a tag matching `v*.*.*` (e.g. `v1.1.0`) runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml) on a Windows GitHub
+Actions runner: it re-runs the full test suite, builds the bundle exactly as above,
+zips it, and publishes (or updates, if the tag's release already exists) a GitHub
+Release with `JapaneseHoverTranslator-win64.zip` and its `.sha256` checksum attached.
+
+```powershell
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+Run `.\scripts\update_jmdict.ps1` and commit any JMdict update *before* tagging --
+the workflow builds whatever is already in the repository, it does not update JMdict
+itself.
+
 ## Reliability, logs, and tests
 
 The app writes a UTF-8 diagnostic log on every run. Logs rotate at 2 MB with three

@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Same reasoning as tests.yml: PyInstaller has to build on the actual
+    # target platform to produce a working Windows bundle.
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository (with LFS)
+        uses: actions/checkout@v4
+        with:
+          # The bundled JMdict database and translation model are tracked
+          # via Git LFS and have to be real files, not pointer stubs, for
+          # the PyInstaller build to bundle actual working data.
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Run test suite
+        # A tag can be pushed to any commit -- re-run the full suite here
+        # rather than trusting the Tests workflow already passed on it, so a
+        # release can never ship from a build that hasn't actually been verified.
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: Build Windows bundle
+        run: python -m PyInstaller --noconfirm --clean scripts\japanese_hover_translator.spec
+
+      - name: Package release zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Compress-Archive -Path dist\JapaneseHoverTranslator -DestinationPath JapaneseHoverTranslator-win64.zip
+          (Get-FileHash JapaneseHoverTranslator-win64.zip -Algorithm SHA256).Hash |
+            Out-File -Encoding ascii JapaneseHoverTranslator-win64.zip.sha256
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # Re-running the workflow for an existing tag (e.g. after fixing a
+            # failed build) updates that release's assets instead of failing.
+            gh release upload $tag JapaneseHoverTranslator-win64.zip JapaneseHoverTranslator-win64.zip.sha256 --clobber
+          } else {
+            gh release create $tag JapaneseHoverTranslator-win64.zip JapaneseHoverTranslator-win64.zip.sha256 --title $tag --generate-notes
+          }
