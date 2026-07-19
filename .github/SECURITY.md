@@ -55,7 +55,7 @@ or your own build from source.
 
 If you find a genuine security issue (not a bug report — see the issue
 tracker for those), please open a private
-[GitHub Security Advisory](../../security/advisories/new) for this repository
+[GitHub Security Advisory](https://github.com/marclourens19/japanese-hover-translator/security/advisories/new) for this repository
 rather than a public issue, so it can be fixed before details are public.
 
 ## Supported versions

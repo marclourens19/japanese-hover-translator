@@ -6,7 +6,10 @@ from importlib.metadata import PackageNotFoundError
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, copy_metadata
 
 
-project_dir = Path(SPECPATH)
+# SPECPATH is the directory containing *this* file -- this spec now lives in
+# scripts/, one level below the project root, so go up one level to keep
+# every path below pointing at the real root (src/, models/, data/, etc.).
+project_dir = Path(SPECPATH).parent
 diagnostic_console = os.environ.get("JHT_DIAGNOSTIC_CONSOLE") == "1"
 
 datas = [
@@ -15,7 +18,7 @@ datas = [
     (str(project_dir / "docs"), "docs"),
     (str(project_dir / "README.md"), "."),
     (str(project_dir / "LICENSE"), "."),
-    (str(project_dir / "THIRD_PARTY_NOTICES.md"), "."),
+    (str(project_dir / "docs" / "THIRD_PARTY_NOTICES.md"), "."),
 ] + collect_data_files("unidic_lite")
 for distribution in (
     "beautifulsoup4",

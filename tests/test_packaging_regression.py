@@ -14,7 +14,7 @@ crash with nothing else catching it:
      lazy (inside functions, only reached once actual OCR/translation runs).
      This guarantees ctranslate2's newer MSVCP140 is already loaded into the
      process before winrt's older copy could ever be touched.
-  2. japanese_hover_translator.spec explicitly drops the bundled
+  2. scripts/japanese_hover_translator.spec explicitly drops the bundled
      winrt/MSVCP140.dll from the PyInstaller binary list, so only the single
      newer root copy ships at all.
 
@@ -36,7 +36,7 @@ import unittest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 HOVER_TRANSLATE_PATH = SRC_DIR / "hover_translate.py"
-SPEC_PATH = PROJECT_ROOT / "japanese_hover_translator.spec"
+SPEC_PATH = PROJECT_ROOT / "scripts" / "japanese_hover_translator.spec"
 
 
 def _module_level_import_names(tree):

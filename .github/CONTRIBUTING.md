@@ -7,7 +7,7 @@ a new feature.
 
 ## Getting set up
 
-Follow [Install and run from source](README.md#install-and-run-from-source)
+Follow [Install and run from source](../README.md#install-and-run-from-source)
 in the README, including `git lfs install` before cloning — the bundled JMdict
 database and translation model are tracked with Git LFS, and a clone without
 it gets small pointer files instead of working data.
@@ -18,7 +18,7 @@ Run the app with `python src/dashboard_app.py` and the test suite with:
 python -m unittest discover -s tests -t . -v
 ```
 
-or `run_tests.cmd`. All 62+ tests should pass before and after your change.
+or `scripts\run_tests.cmd`. All 62+ tests should pass before and after your change.
 
 ## Where things live
 
@@ -37,7 +37,7 @@ needing this document to explain internals. A few starting points:
 - `spaced_repetition.py` — pure SM-2 scheduling logic, no UI/DB dependencies,
   the easiest file to unit test changes against in isolation.
 
-See also the [How it works](README.md#how-it-works) diagram in the README for
+See also the [How it works](../README.md#how-it-works) diagram in the README for
 the overall data flow before diving into any one file.
 
 ## Ground rules for changes

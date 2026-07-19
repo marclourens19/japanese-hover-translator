@@ -160,7 +160,7 @@ reliable for the bundled native OCR and translation libraries than extracting a 
 single-file executable on every launch.
 
 ```powershell
-.\build_release.ps1
+.\scripts\build_release.ps1
 ```
 
 Distribute the complete `dist\JapaneseHoverTranslator` folder as a ZIP. Users extract it
@@ -194,7 +194,7 @@ required:
 python -m unittest discover -s tests -t . -v
 ```
 
-`run_tests.cmd` runs the same command. The suite covers cursor-anchored OCR rejection,
+`scripts\run_tests.cmd` runs the same command. The suite covers cursor-anchored OCR rejection,
 noise/confidence filtering, hover-worker recovery, real JMdict lookup and inflection,
 translation fallback and caching, atomic settings, legacy database migration, SM-2
 transitions, and physical log rotation.
@@ -246,7 +246,7 @@ dictionary form, learning stage, next review, interval, ease, reviews, and lapse
   previous contents. Known terminal window classes are skipped so Ctrl+C is not sent as
   an interrupt.
 
-See [SECURITY.md](SECURITY.md) for the full data-flow breakdown, including the one
+See [SECURITY.md](.github/SECURITY.md) for the full data-flow breakdown, including the one
 inherent trust boundary (the Tesseract executable, if you use that OCR backend) and how
 to report an actual security issue.
 
@@ -269,17 +269,22 @@ to report an actual security issue.
 
 ```
 japanese-hover-translator/
-├── src/                          application source (see below)
-├── tests/                        unittest regression suite
-├── data/                         bundled JMdict database + its licenses
-├── models/                       bundled offline translation model
-├── docs/                         README screenshots
-├── scripts/                      JMdict build/update tooling
-├── japanese_hover_translator.spec   PyInstaller build definition
-├── build_release.ps1             one-command Windows bundle build
-├── run_tests.cmd / run_tests.ps1 one-command test runner
+├── src/                 application source (see below)
+├── tests/               unittest regression suite
+├── data/                bundled JMdict database + its licenses
+├── models/              bundled offline translation model
+├── docs/                README screenshots + THIRD_PARTY_NOTICES.md
+├── scripts/             build/test/data tooling -- see below
+├── .github/             CI workflow, CONTRIBUTING.md, SECURITY.md
 └── requirements*.txt
 ```
+
+`scripts/`:
+
+- `japanese_hover_translator.spec` — PyInstaller build definition
+- `build_release.ps1` — one-command Windows bundle build (`.\scripts\build_release.ps1`)
+- `run_tests.cmd` / `run_tests.ps1` — one-command test runner
+- `build_jmdict.py` / `update_jmdict.ps1` — JMdict database build/update tooling
 
 `src/`:
 
@@ -299,18 +304,18 @@ for the two biggest pieces.
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to
+Contributions are welcome — see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for how to
 get set up, where things live, and the ground rules that keep the threading
 model and packaged build from regressing.
 
 ## Security
 
 This app is entirely local with no server or accounts; see
-[SECURITY.md](SECURITY.md) for the full explanation of what data goes where,
+[SECURITY.md](.github/SECURITY.md) for the full explanation of what data goes where,
 and how to report an actual vulnerability.
 
 ## Licenses
 
 The application is [MIT licensed](LICENSE). The bundled model and runtime components keep
-their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license
+their own licenses; see [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and the license
 inside the model directory.
