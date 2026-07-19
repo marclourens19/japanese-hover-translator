@@ -1,6 +1,7 @@
 # Japanese Hover Translator
 
 [![Tests](https://github.com/marclourens19/japanese-hover-translator/actions/workflows/tests.yml/badge.svg)](https://github.com/marclourens19/japanese-hover-translator/actions/workflows/tests.yml)
+[![Tests: 62 passing](https://img.shields.io/badge/tests-62%20passing-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)](#install-and-run-from-source)
 [![Python 3.9–3.14](https://img.shields.io/badge/python-3.9%E2%80%933.14-3776AB)](#install-and-run-from-source)
@@ -71,27 +72,17 @@ OPUS-MT model keeps phrase translation working when Google is unavailable.
 
 Three threads, coordinated through one queue, all owned by `dashboard_app.DashboardApp`:
 
-```
- cursor polling ──▶ dwell detected ──▶ selection read, or OCR capture
- (dwell thread)                        (Tesseract or Windows OCR)
-                                                │
-                                                ▼
-                                   furigana + dictionary-form analysis
-                                   (fugashi/UniDic)
-                                                │
-                          ┌─────────────────────┼─────────────────────┐
-                          ▼                     ▼                     ▼
-                  popup shown now      queued for translation   saved on demand
-                  (Tk main thread)     (translation thread)      (SM-2 scheduler)
-                                                │
-                                   JMdict (single words, offline)
-                                        │              │
-                                   miss/phrase     Google Translate
-                                        │           (cached, backoff)
-                                        └──────┬───────┘
-                                               ▼
-                                     bundled offline OPUS-MT
-                                     (guaranteed fallback)
+```mermaid
+flowchart TD
+    A["Cursor polling<br/>(dwell thread)"] -->|dwell detected| B["Selection read,<br/>or OCR capture<br/>(Tesseract / Windows OCR)"]
+    B --> C["Furigana + dictionary-form analysis<br/>(fugashi/UniDic)"]
+    C --> D["Popup shown now<br/>(Tk main thread)"]
+    C --> E["Queued for translation<br/>(translation thread)"]
+    C --> F["Saved on demand<br/>(SM-2 scheduler)"]
+    E --> G["JMdict lookup<br/>(single words, offline)"]
+    G -->|hit| H["Definition returned"]
+    G -->|miss / phrase| I["Google Translate<br/>(cached, backoff)"]
+    I -->|unreachable| J["Bundled offline OPUS-MT<br/>(guaranteed fallback)"]
 ```
 
 Neither background thread ever touches a Tkinter widget directly — every cross-thread
