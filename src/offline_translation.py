@@ -202,14 +202,17 @@ class OfflineJapaneseTranslator:
             return cached, cache_kind, 0.0
 
         started = time.perf_counter()
+        # 1. Japanese text -> subword tokens the model was trained on.
         source_tokens = self.source_processor.encode(source_text, out_type=str) + ["</s>"]
         max_length = max(32, min(192, len(source_tokens) * 4 + 16))
+        # 2. Beam-search decode -- the actual translation step.
         result = self.engine.translate_batch(
             [source_tokens],
             beam_size=4,
             max_decoding_length=max_length,
             repetition_penalty=1.1,
         )[0]
+        # 3. Drop special tokens, then subword tokens -> English text.
         target_tokens = [
             token
             for token in result.hypotheses[0]

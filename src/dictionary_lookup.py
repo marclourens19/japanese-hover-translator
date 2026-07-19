@@ -171,23 +171,37 @@ class LocalJapaneseDictionary:
         in the hover popup / saved-word detail panel: headword(+reading),
         part of speech, then numbered senses -- multiple entries (e.g. two
         unrelated words sharing a reading) get numbered headers instead."""
-        lines = ["JMdict dictionary · EDRDG"]
+        lines = ["JMdict dictionary · EDRDG"]  # source attribution header, always first line
         multiple = len(match.entries) > 1
         for entry_number, entry in enumerate(match.entries, start=1):
+            # Headword line: numbered ("1. ", "2. ", ...) only when there's more
+            # than one entry to distinguish; reading shown in 【】 only when it
+            # actually differs from the headword itself (kana-only words have
+            # reading == headword, so showing it again would be redundant).
             prefix = f"{entry_number}. " if multiple else ""
             reading = f"【{entry.reading}】" if entry.reading != entry.headword else ""
             lines.append(f"{prefix}{entry.headword}{reading}")
+
+            # Part-of-speech line, taken from the first sense only -- showing
+            # it once per entry (not once per sense) keeps the popup compact.
             senses = entry.senses[:MAX_SENSES_PER_ENTRY]
             if senses:
                 part_of_speech = self._part_of_speech(senses[0])
                 if part_of_speech:
                     lines.append(part_of_speech)
+
+            # One line per sense/definition -- numbered when there's only one
+            # entry (so "1./2./3." reads as sense numbers), bulleted when
+            # there are multiple entries (so numbers aren't ambiguous between
+            # "which entry" and "which sense").
             for sense_number, sense in enumerate(senses, start=1):
                 definition = self._definition(sense)
                 if not definition:
                     continue
                 marker = f"{sense_number}. " if not multiple else "• "
                 lines.append(marker + definition)
+
+            # Blank-line separator between entries (but not after the last one).
             if multiple and entry_number < len(match.entries):
                 lines.append("")
         return "\n".join(lines).strip()

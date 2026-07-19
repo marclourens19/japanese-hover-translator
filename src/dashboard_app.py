@@ -396,6 +396,7 @@ class DashboardApp:
             "Japanese learning workspace",
         )
 
+        # --- Status card: on/off dot + headline, subtitle, and the toggle button ---
         status = self._card(inner)
         status.pack(fill="x", pady=(0, 16))
         accent_bar = tk.Frame(status, bg=ACCENT, width=5)
@@ -422,6 +423,7 @@ class DashboardApp:
         )
         self.toggle_btn.pack(side="right", padx=22, pady=15)
 
+        # --- Three metric tiles: saved-word count, due-today count, active OCR engine ---
         metrics = tk.Frame(inner, bg=BG)
         metrics.pack(fill="x", pady=(0, 16))
         for index, (label, value, caption) in enumerate((
@@ -452,6 +454,8 @@ class DashboardApp:
                 card, text=caption, bg=CARD, fg=MUTED, font=UI_SMALL,
             ).pack(anchor="w", padx=18, pady=(2, 12))
 
+        # --- Two-column footer: "How it works" guide on the left, live
+        # keyboard-shortcut summary on the right ---
         columns = tk.Frame(inner, bg=BG)
         columns.pack(fill="both", expand=True)
 
@@ -532,6 +536,7 @@ class DashboardApp:
         inner = tk.Frame(page, bg=BG)
         inner.pack(fill="both", expand=True, padx=38, pady=24)
 
+        # --- Header row: title + "Review due cards" button ---
         self.saved_top = tk.Frame(inner, bg=BG)
         self.saved_top.pack(fill="x")
         header = tk.Frame(self.saved_top, bg=BG)
@@ -547,6 +552,7 @@ class DashboardApp:
             header, text="Review due cards", command=self._start_study, kind="primary",
         ).pack(side="right", anchor="e")
 
+        # --- Toolbar: search box (with hand-rolled placeholder text) + All/Due filter toggle ---
         toolbar = self._card(self.saved_top)
         toolbar.pack(fill="x", pady=(20, 12))
         search_group = tk.Frame(toolbar, bg=CARD)
@@ -575,6 +581,7 @@ class DashboardApp:
         self.saved_search_entry.bind("<FocusIn>", self._focus_in_search)
         self.saved_search_entry.bind("<FocusOut>", self._focus_out_search)
 
+        # All words / Due now toggle buttons (styled active/inactive in _set_saved_filter)
         filters = tk.Frame(toolbar, bg=CARD)
         filters.pack(side="left", padx=(8, 14), pady=10)
         self.saved_filter_var = tk.StringVar(value="all")
@@ -646,6 +653,7 @@ class DashboardApp:
         self.list_view = tk.Frame(self.saved_body, bg=BG)
         self.list_view.pack(fill="both", expand=True)
 
+        # --- Left: the Treeview list of saved words ---
         tree_wrap = tk.Frame(
             self.list_view, bg=CARD, highlightbackground=BORDER, highlightthickness=1,
         )
@@ -666,6 +674,7 @@ class DashboardApp:
         self.tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
 
+        # --- Right: fixed-width detail panel for whatever's selected in the tree ---
         detail = tk.Frame(
             self.list_view, bg=CARD, width=292,
             highlightbackground=BORDER, highlightthickness=1,
@@ -711,6 +720,7 @@ class DashboardApp:
         self.detail_saved = tk.Label(detail, bg=CARD, fg=FAINT, font=("Segoe UI", 8))
         self.detail_saved.pack(anchor="w", padx=20, pady=(6, 0))
 
+        # Reset progress / Delete buttons, pinned to the bottom of the panel
         actions = tk.Frame(detail, bg=CARD)
         actions.pack(side="bottom", fill="x", padx=20, pady=20)
         self.learned_btn = self._button(
@@ -973,6 +983,8 @@ class DashboardApp:
         )
         self.study_progress_bar.pack(fill="x", pady=(0, 20))
 
+        # --- The flashcard itself: big word, then a reveal-hidden block
+        # (translation + dictionary form) shown once the user reveals ---
         card = tk.Frame(
             self.study_view, bg=CARD, highlightbackground=BORDER, highlightthickness=1,
         )
@@ -1000,6 +1012,8 @@ class DashboardApp:
         )
         self.study_dict.pack(padx=30, pady=(8, 28))
 
+        # --- Controls: Reveal button (pre-reveal) swaps for four rating
+        # buttons (post-reveal) -- see _reveal_card ---
         self.study_controls = tk.Frame(self.study_view, bg=BG)
         self.study_controls.pack(pady=(5, 0))
         self.reveal_btn = self._button(
@@ -1032,6 +1046,8 @@ class DashboardApp:
         )
         self.study_hint.pack(pady=(10, 0))
 
+        # Keyboard shortcuts for this session; _unbind_study_keys removes these
+        # on the way out (see that method's docstring for why it must always run).
         self.root.bind("<space>", lambda _event: self._reveal_card())
         self.root.bind("<Key-1>", lambda _event: self._answer("again"))
         self.root.bind("<Key-2>", lambda _event: self._answer("hard"))
@@ -1181,6 +1197,9 @@ class DashboardApp:
         right.pack(side="left", fill="y", padx=(8, 0))
         right.pack_propagate(False)
 
+        # --- Left column, card 1: hotkey rows, each with a live key chip and
+        # a "Change" button that starts the recording state machine (see
+        # _start_recording) ---
         shortcuts = self._card(left)
         shortcuts.pack(fill="x")
         tk.Label(shortcuts, text="Keyboard shortcuts", bg=CARD, fg=TEXT, font=H2).pack(
@@ -1224,6 +1243,7 @@ class DashboardApp:
             font=UI_SMALL, wraplength=340, justify="left",
         ).pack(side="left", padx=(14, 0))
 
+        # --- Left column, card 2: the same on/off toggle as the Overview page ---
         behavior = self._card(left)
         behavior.pack(fill="x", pady=(12, 0))
         tk.Label(behavior, text="Application behavior", bg=CARD, fg=TEXT, font=H2).pack(
@@ -1243,6 +1263,7 @@ class DashboardApp:
         )
         self.settings_toggle.pack(side="right")
 
+        # --- Right column, card 1: read-only summary of which backends are active ---
         runtime = self._card(right)
         runtime.pack(fill="x")
         tk.Label(runtime, text="System status", bg=CARD, fg=TEXT, font=H2).pack(
@@ -1262,6 +1283,9 @@ class DashboardApp:
             ).pack(side="right")
         tk.Frame(runtime, bg=CARD, height=8).pack()
 
+        # --- Right column, card 2: where local data files live, for
+        # troubleshooting/support -- values are just display labels here,
+        # the README documents the actual full paths ---
         storage = self._card(right)
         storage.pack(fill="x", pady=(12, 0))
         tk.Label(storage, text="Storage & diagnostics", bg=CARD, fg=TEXT, font=H2).pack(

@@ -567,16 +567,26 @@ def get_selected_text(kb_controller, x, y):
     if focused_window_is_console():
         return None
 
+    # Step 1: remember whatever is on the clipboard right now so it can be
+    # restored below -- this trick temporarily overwrites it with Ctrl+C.
     original = _clipboard_paste_with_retry()
 
+    # Step 2: simulate a physical Ctrl+C keypress into the focused window.
+    # This is the only way to read "what's selected" -- Windows has no API
+    # for it -- so whatever has focus receives this exactly as if the user
+    # pressed it themselves.
     kb_controller.press(keyboard.Key.ctrl)
     kb_controller.press("c")
     kb_controller.release("c")
     kb_controller.release(keyboard.Key.ctrl)
-    time.sleep(SELECTION_COPY_WAIT_SECONDS)
+    time.sleep(SELECTION_COPY_WAIT_SECONDS)  # give the target app time to update the clipboard
 
+    # Step 3: read back whatever the Ctrl+C put on the clipboard (if anything).
     copied = _clipboard_paste_with_retry()
 
+    # Step 4: put the user's original clipboard contents back so this lookup
+    # is invisible to them -- best-effort, since the clipboard is a shared OS
+    # resource another app could be holding right at this moment.
     if original is not None:
         if not _clipboard_copy_with_retry(original):
             log.warning(
@@ -589,6 +599,10 @@ def get_selected_text(kb_controller, x, y):
             "its previous contents will not be restored"
         )
 
+    # Step 5: decide whether the Ctrl+C actually captured a real selection.
+    # No change from `original` means nothing was selected (Ctrl+C copies
+    # nothing new in that case), and a copied string with no Japanese in it
+    # isn't a selection this tool cares about.
     if not copied or copied == original:
         return None
     if not JAPANESE_CHAR_RE.search(copied):
@@ -633,10 +647,18 @@ def filter_tesseract_data(data):
         "text", "conf", "block_num", "par_num", "line_num",
         "left", "top", "width", "height",
     )
+    # pytesseract.image_to_data returns one flat dict of parallel lists (one
+    # entry per recognized word) rather than a nested word/line structure --
+    # fail loudly here if the shape ever changes instead of silently mis-zipping.
     missing = [name for name in required if name not in data]
     if missing:
         raise ValueError("OCR result is missing fields: " + ", ".join(missing))
 
+    # Pass 1: group Tesseract's flat per-word rows back into lines, keyed by
+    # Tesseract's own (block, paragraph, line) numbering, dropping any word
+    # that's empty or below the per-word confidence floor as we go. Each kept
+    # word also records whether its own bounding box is near the capture's
+    # cursor point, since that's decided per-word, not per-line.
     line_words = {}
     for word, conf, block, par, line_num, left, top, width, height in zip(
         *(data[name] for name in required)
@@ -662,15 +684,25 @@ def filter_tesseract_data(data):
             }
         )
 
+    # Pass 2: turn each surviving line's word list into one cleaned string,
+    # keeping only lines that both plausibly sit under the cursor and look
+    # like real Japanese text rather than OCR noise.
     lines = []
-    for key in sorted(line_words):
+    for key in sorted(line_words):  # sorted so lines come out in reading order
         words = line_words[key]
+        # A line only counts as "under the cursor" if at least one of its
+        # words does -- this is what stops unrelated text elsewhere in the
+        # capture region from producing a popup.
         if not any(word["near_cursor"] for word in words):
             continue
         line = clean_japanese_line("".join(word["text"] for word in words))
         average_confidence = sum(
             word["confidence"] for word in words
         ) / len(words)
+        # Reject: empty after cleaning, no actual kana/kanji present, looks
+        # like repeated-glyph hallucination, average confidence too low, or
+        # (for a single lone character, which is easy to false-positive on)
+        # confidence below the stricter single-character threshold.
         if (
             not line
             or not JAPANESE_LETTER_RE.search(line)
@@ -773,24 +805,40 @@ class HoverTranslator:
         TranslationSetupError if either can't be made to work -- the caller
         is expected to show that to the user, since a broken engine here
         means the app has no OCR or no translation, respectively."""
+        # --- Basic run state ---
         self.ui_queue = ui_queue
-        self.enabled = True
-        self.running = True
+        self.enabled = True  # toggled by the toggle hotkey; dwell loop no-ops while False
+        self.running = True  # flipped False by stop(); dwell loop's outer while-loop condition
+
+        # --- OCR backend selection (raises OcrSetupError if neither works) ---
         self.ocr_backend = choose_ocr_backend()
         self.ocr_backend_display = (
             "Tesseract" if self.ocr_backend == "tesseract" else "Windows OCR"
         )
         self.translation_backend_display = "JMdict words · Google phrases · offline fallback"
-        self._sct = mss.MSS()
-        self._tagger = fugashi.Tagger()
-        self._kb_controller = keyboard.Controller()
 
+        # --- Shared resources used by the dwell worker thread ---
+        self._sct = mss.MSS()  # screen-capture handle, reused across every hover
+        self._tagger = fugashi.Tagger()  # MeCab/UniDic tokenizer for furigana + lemmas
+        self._kb_controller = keyboard.Controller()  # simulates Ctrl+C for selection reads
+
+        # --- Dwell cooldown tracking (see in_cooldown) ---
         self._last_trigger_pos = None  # (x, y) of the last successful trigger
         self._last_trigger_time = 0.0
-        self._last_runtime_error_notice = 0.0
+        self._last_runtime_error_notice = 0.0  # throttles repeated "hover failed" UI notices
+
+        # --- Translation job bookkeeping ---
+        # job_counter/latest_translation_job_id let a translation result that
+        # arrives late (after the cursor moved on) be recognized as stale and
+        # discarded instead of popping up over whatever's showing now.
         self._job_counter = 0
         self._latest_translation_job_id = None
         self._translation_queue = queue.Queue(maxsize=1)
+
+        # --- Start the translation worker thread and wait for it to finish
+        # loading (JMdict + offline model + Google client) before returning,
+        # so the caller never gets a HoverTranslator that isn't actually ready
+        # to translate yet. ---
         self._translation_init_event = threading.Event()
         self._translation_init_error = None
         self._translation_thread = threading.Thread(
@@ -1005,6 +1053,9 @@ class HoverTranslator:
         dictionary_retry_after = 0.0
         offline_translator = None
         phrase_translator = None
+
+        # === Phase 1: one-time startup of the three translation engines. ===
+        # This runs once when the thread starts, before the job loop below.
         try:
             try:
                 dictionary = LocalJapaneseDictionary()
@@ -1032,17 +1083,27 @@ class HoverTranslator:
                     "Google phrase translator initialization failed; using offline only"
                 )
         finally:
+            # Unblocks HoverTranslator.__init__'s wait() no matter how the
+            # startup above went -- __init__ then checks
+            # self._translation_init_error to see whether it actually succeeded.
             self._translation_init_event.set()
 
+        # === Phase 2: the main job loop -- one iteration per hover/selection
+        # that made it past OCR, until stop() pushes a None sentinel. ===
         try:
             while True:
-                item = self._translation_queue.get()
+                item = self._translation_queue.get()  # blocks until a job (or the None sentinel) arrives
                 if item is None:
                     break
                 job_id, source_text, dictionary_candidates = item
                 started = time.monotonic()
                 try:
                     lookup_started = time.perf_counter()
+
+                    # --- Step A: if JMdict is currently closed (a previous
+                    # lookup failed), and enough time has passed, try
+                    # reopening it before this lookup instead of staying
+                    # degraded for the rest of the process's life. ---
                     if dictionary is None and time.monotonic() >= dictionary_retry_after:
                         try:
                             dictionary = LocalJapaneseDictionary()
@@ -1052,6 +1113,11 @@ class HoverTranslator:
                             dictionary_retry_after = (
                                 time.monotonic() + DICTIONARY_RETRY_COOLDOWN_SECONDS
                             )
+
+                    # --- Step B: try JMdict first -- an exact offline
+                    # dictionary hit is always preferred over machine
+                    # translation, since it's a real definition rather than a
+                    # guess. ---
                     dictionary_match = None
                     if dictionary is not None:
                         try:
@@ -1068,6 +1134,16 @@ class HoverTranslator:
                             dictionary_retry_after = (
                                 time.monotonic() + DICTIONARY_RETRY_COOLDOWN_SECONDS
                             )
+
+                    # --- Step C: the three-way fallback chain. Exactly one of
+                    # these three branches produces the final `translated`
+                    # text for this job:
+                    #   1. a JMdict definition, if Step B found one;
+                    #   2. otherwise Google phrase translation (itself falling
+                    #      back to the offline model internally on failure,
+                    #      and again explicitly below if it raises); or
+                    #   3. the offline model directly, if Google's translator
+                    #      never initialized at all. ---
                     if dictionary_match is not None:
                         translated = dictionary.format_match(dictionary_match)
                         cache_kind = "jmdict"
@@ -1091,11 +1167,20 @@ class HoverTranslator:
                         )
                         cache_kind = "offline-only-" + cache_kind
                 except Exception:
+                    # Last-resort catch-all: if every branch above somehow
+                    # still raised (e.g. the offline model itself broke),
+                    # show a clear retry message instead of losing this
+                    # worker thread entirely.
                     log.exception("dictionary/translation lookup failed")
                     translated = "Translation unavailable — hover again to retry."
                     cache_kind = "error"
                     model_ms = 0.0
                 elapsed_ms = (time.monotonic() - started) * 1000
+
+                # Only deliver the result if this is still the newest job --
+                # if the cursor moved on to another word while this lookup
+                # was in flight, showing it now would incorrectly resurrect
+                # the popup for text the user isn't hovering anymore.
                 if self.running and job_id == self._latest_translation_job_id:
                     self.ui_queue.put(("translation_ready", job_id, translated))
                 else:
@@ -1110,6 +1195,9 @@ class HoverTranslator:
                     elapsed_ms,
                 )
         finally:
+            # Reached both on a normal stop() (None sentinel) and on an
+            # unexpected exception escaping the loop -- either way, every
+            # engine that was successfully opened above gets closed.
             if dictionary is not None:
                 dictionary.close()
             if phrase_translator is not None:
@@ -1152,9 +1240,15 @@ class HoverTranslator:
         capture_region + ocr, then analyze the result (furigana, dictionary
         candidates) and queue it for translation. Runs entirely on the dwell
         worker thread; the only UI-visible effects are via ui_queue."""
+        # Skip entirely if this spot already triggered a popup recently --
+        # avoids re-running OCR/translate on every tiny jitter of the mouse
+        # while the user is still reading the current popup.
         if self.in_cooldown(x, y):
             return
 
+        # --- Step 1: get the text to translate, preferring a real text
+        # selection (exact, no OCR misreads) and falling back to OCR only
+        # when nothing is selected. ---
         t0 = time.monotonic()
         selected = get_selected_text(self._kb_controller, x, y)
         t1 = time.monotonic()
@@ -1180,6 +1274,9 @@ class HoverTranslator:
                 (t_capture - t1) * 1000, (t2 - t_capture) * 1000,
             )
 
+        # Record the trigger regardless of whether text was actually found --
+        # an empty-space hover still starts this spot's cooldown, so hovering
+        # blank space repeatedly doesn't re-run OCR every poll tick.
         self._last_trigger_pos = (x, y)
         self._last_trigger_time = time.monotonic()
 
@@ -1187,6 +1284,8 @@ class HoverTranslator:
             log.info("dwell at (%d, %d): no text found (%s)", x, y, stage_label)
             return
 
+        # --- Step 2: cap runaway-long selections before any further
+        # analysis/translation work is spent on them. ---
         text = truncate_for_analysis(text)
 
         self._job_counter += 1
@@ -1198,6 +1297,11 @@ class HoverTranslator:
         # string, so this is a no-op there.
         flat_text = "".join(text.splitlines())
 
+        # --- Step 3: run the (fast, local) morphological analysis now, on
+        # this thread, and hand it straight to the UI so the popup can
+        # appear immediately -- the (slower, possibly network-bound)
+        # translation itself is handed off separately to the dedicated
+        # translation worker thread and arrives later via ui_queue. ---
         furigana_lines = [self.furigana_line(line) for line in text.splitlines()]
         dict_forms = self.dictionary_forms(flat_text)
         self.ui_queue.put(TranslationJob(job_id, x, y, furigana_lines, dict_forms, flat_text))
@@ -1341,6 +1445,8 @@ def init_study_db(path=STUDY_DB_PATH, now=None):
     """Create or migrate the study database without losing saved cards."""
     conn = sqlite3.connect(path)
     try:
+        # Step 1: create the table if this is a brand-new database. Uses the
+        # *current* full schema, so a fresh install never needs migrating.
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS saved_words (
@@ -1360,6 +1466,10 @@ def init_study_db(path=STUDY_DB_PATH, now=None):
             )
             """
         )
+        # Step 2: for a pre-existing database from an older version of the
+        # app, add any SM-2 columns it doesn't have yet -- CREATE TABLE IF
+        # NOT EXISTS above is a no-op for a table that already exists, so an
+        # old schema needs these ALTER TABLEs to catch up.
         existing = {
             row[1] for row in conn.execute("PRAGMA table_info(saved_words)")
         }
@@ -1378,6 +1488,10 @@ def init_study_db(path=STUDY_DB_PATH, now=None):
                     f"ALTER TABLE saved_words ADD COLUMN {column} {declaration}"
                 )
 
+        # Step 3: backfill due_at for any row that predates SM-2 scheduling
+        # (i.e. still has no due_at at all) -- this only ever touches rows
+        # left over from before this migration, never a card scheduled by
+        # the current SM-2 code, since those always set due_at themselves.
         migration_now = now or utc_now()
         due_now = format_db_datetime(migration_now)
         learned_due = format_db_datetime(migration_now + timedelta(days=6))
@@ -1591,9 +1705,10 @@ class OverlayWindow:
         pinned state changes; there's no incremental-update path, a full
         canvas.delete("all") + redraw is simple and fast enough at this size."""
         canvas = self.canvas
-        canvas.delete("all")
-        cy = OVERLAY_PADDING_PX
+        canvas.delete("all")  # full redraw every time -- see docstring for why
+        cy = OVERLAY_PADDING_PX  # running "next free y" cursor, grows as each section is drawn
 
+        # --- Section 1: pinned banner (only when pinned) ---
         if self.state["pinned"]:
             canvas.create_text(
                 OVERLAY_PADDING_PX, cy,
@@ -1602,8 +1717,12 @@ class OverlayWindow:
             )
             cy += self.dict_form_font.metrics("linespace") + 6
 
+        # --- Section 2: the furigana-annotated Japanese text itself ---
         cy = self._draw_furigana_lines(furigana_lines, cy)
 
+        # --- Section 3: divider line, then the translation/definition text.
+        # JMdict definitions are shown in a plain (non-italic) font to read
+        # more like a dictionary entry than a machine-translation guess. ---
         cy += 4
         canvas.create_line(
             OVERLAY_PADDING_PX, cy, OVERLAY_MAX_WIDTH_PX, cy,
@@ -1621,10 +1740,15 @@ class OverlayWindow:
             font=translation_font, fill=OVERLAY_TRANSLATION_COLOR,
             anchor="nw", width=OVERLAY_MAX_WIDTH_PX - 2 * OVERLAY_PADDING_PX,
         )
+        # Force Tk to lay out the text item now so its real (possibly
+        # multi-line, word-wrapped) bounding box can be measured -- needed to
+        # know where the next section should start.
         self.win.update_idletasks()
         t_bbox = canvas.bbox(translation_id)
         cy = t_bbox[3] if t_bbox else cy
 
+        # --- Section 4: dictionary-form breakdown, only shown when the
+        # hovered text contained inflected words worth explaining. ---
         if dict_forms:
             cy += 10
             canvas.create_line(
@@ -1647,6 +1771,9 @@ class OverlayWindow:
                 width=OVERLAY_MAX_WIDTH_PX - 2 * OVERLAY_PADDING_PX,
             )
 
+        # --- Section 5: shrink-wrap the window to exactly fit what was just
+        # drawn (bounded below by OVERLAY_MAX_WIDTH_PX so short text doesn't
+        # produce a tiny sliver of a popup). ---
         bbox = canvas.bbox("all")
         content_w = bbox[2] if bbox else OVERLAY_MAX_WIDTH_PX
         content_h = bbox[3] if bbox else OVERLAY_PADDING_PX
@@ -1659,6 +1786,8 @@ class OverlayWindow:
         w = self.win.winfo_reqwidth()
         h = self.win.winfo_reqheight()
 
+        # --- Section 6: position the window near the cursor, flipping to
+        # whichever side keeps the whole popup on-screen. ---
         vleft, vtop, vwidth, vheight = get_virtual_screen_bounds()
         # Default to the cursor's bottom-right; flip to the opposite side of
         # the cursor on whichever axis would otherwise run off the screen.
@@ -1673,6 +1802,8 @@ class OverlayWindow:
         px = max(vleft, min(px, vleft + vwidth - w))
         py = max(vtop, min(py, vtop + vheight - h))
 
+        # --- Section 7: apply the geometry, show the window, and (re)arm
+        # the auto-hide timer for this render. ---
         self.win.geometry(f"{w}x{h}+{px}+{py}")
         self.win.deiconify()
         self.state["visible"] = True

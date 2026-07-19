@@ -111,11 +111,18 @@ def schedule_review(state, rating, reviewed_at=None):
     previous_ease = max(MIN_EASE_FACTOR, float(state.ease_factor))
     lapses = max(0, int(state.lapses))
 
+    # Quality < 3 ("Again") is a lapse: the card is treated as forgotten, so
+    # repetitions resets to 0 and it comes back tomorrow rather than
+    # continuing along its previous interval progression.
     if quality < 3:
         repetitions = 0
         interval_days = 1
         lapses += 1
     else:
+        # A successful review advances the standard SM-2 interval sequence:
+        # 1st success -> 1 day, 2nd success -> 6 days, every success after
+        # that -> previous interval scaled by the current ease factor (so
+        # intervals grow geometrically the more a card is remembered).
         repetitions += 1
         if repetitions == 1:
             interval_days = 1
@@ -124,6 +131,12 @@ def schedule_review(state, rating, reviewed_at=None):
         else:
             interval_days = max(1, round(previous_interval * previous_ease))
 
+    # The classic SM-2 ease-factor update formula: a perfect "Easy" (quality
+    # 5) leaves ease unchanged (delta 0.1 - 0*... = +0.1, roughly a small
+    # bump), while progressively worse ratings shrink it more sharply -- an
+    # "Again" (quality 1) pulls ease down hardest. Floored at MIN_EASE_FACTOR
+    # so a struggling card's interval still grows a little each success,
+    # rather than stalling completely.
     ease_delta = 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)
     ease_factor = max(MIN_EASE_FACTOR, previous_ease + ease_delta)
     due_at = reviewed_at + timedelta(days=interval_days)

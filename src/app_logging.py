@@ -38,6 +38,10 @@ def configure_logging(
     log_directory.mkdir(parents=True, exist_ok=True)
     log_path = log_directory / LOG_FILE_NAME
 
+    # Idempotency guard: hover_translate.py and dashboard_app.py can both end
+    # up calling this for the same logger during one process's startup --
+    # skip re-attaching handlers (which would double every log line) if this
+    # exact log path was already configured.
     logger = logging.getLogger(logger_name)
     if getattr(logger, "_jht_configured_path", None) == str(log_path):
         return logger, log_path
@@ -62,6 +66,10 @@ def configure_logging(
     logger.addHandler(file_handler)
 
     if console is None:
+        # Default: log to the console when running from source (there is
+        # one), but not in a packaged --windowed build (there is no console
+        # to write to) unless JHT_DIAGNOSTIC_CONSOLE=1 opts back in for
+        # troubleshooting a packaged build.
         console = not getattr(sys, "frozen", False) or os.environ.get(
             "JHT_DIAGNOSTIC_CONSOLE"
         ) == "1"
