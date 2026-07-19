@@ -38,6 +38,7 @@ you don't want that; it opens with no console at all.
 - [OCR setup](#ocr-setup)
 - [Build the Windows bundle](#build-the-windows-bundle)
 - [Reliability, logs, and tests](#reliability-logs-and-tests)
+- [Engineering notes](#engineering-notes)
 - [Default hotkeys](#default-hotkeys)
 - [Spaced-repetition study](#spaced-repetition-study)
 - [Data and privacy](#data-and-privacy)
@@ -194,6 +195,13 @@ Every push and pull request against `main` runs the full suite on a Windows GitH
 Actions runner (see the badge at the top of this file and
 [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) — the same command shown
 above, on the same Windows platform the app actually targets.
+
+## Engineering notes
+
+[`docs/engineering-notes.md`](docs/engineering-notes.md) has write-ups of bugs worth
+remembering — starting with a native DLL collision that crashed the packaged build
+before Python logging even started, how it was root-caused, and the regression test
+that keeps it from coming back silently.
 
 ## Default hotkeys
 
