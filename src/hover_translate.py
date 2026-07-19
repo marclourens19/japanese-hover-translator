@@ -815,7 +815,13 @@ class HoverTranslator:
         self.ocr_backend_display = (
             "Tesseract" if self.ocr_backend == "tesseract" else "Windows OCR"
         )
-        self.translation_backend_display = "JMdict words · Google phrases · offline fallback"
+        # Updated by _translation_loop as engines actually succeed/fail to
+        # initialize (and later reopen/fail again) -- translation_backend_display
+        # below is a live property computed from these, not a fixed string, so
+        # the Overview/Settings pages never claim a backend is active when it
+        # has actually degraded.
+        self._dictionary_active = False
+        self._phrase_translator_active = False
 
         # --- Shared resources used by the dwell worker thread ---
         self._sct = mss.MSS()  # screen-capture handle, reused across every hover
@@ -825,6 +831,14 @@ class HoverTranslator:
         # --- Dwell cooldown tracking (see in_cooldown) ---
         self._last_trigger_pos = None  # (x, y) of the last successful trigger
         self._last_trigger_time = 0.0
+        # True once the cursor has moved more than HIDE_MOVE_DISTANCE_PX away
+        # from _last_trigger_pos -- the same distance OverlayWindow uses to
+        # auto-hide the popup. Once that's happened, the cooldown for that
+        # spot is void: the popup for it is gone, so a deliberate return
+        # within COOLDOWN_RADIUS_PX/COOLDOWN_SECONDS should trigger a fresh
+        # popup, not be treated as jitter on a popup that isn't showing
+        # anymore. See dwell_watch_loop (sets this) and in_cooldown (checks it).
+        self._cooldown_broken_by_distance = False
         self._last_runtime_error_notice = 0.0  # throttles repeated "hover failed" UI notices
 
         # --- Translation job bookkeeping ---
@@ -849,6 +863,18 @@ class HoverTranslator:
         self._translation_thread.start()
         if not self._translation_init_event.wait(TRANSLATION_MODEL_LOAD_TIMEOUT_SECONDS):
             self.running = False
+            # The background thread is still busy with Phase 1 startup (it
+            # hasn't reached the job loop yet, so the None sentinel stop()
+            # would normally send can't be picked up right now) -- queue it
+            # anyway so that whenever Phase 1 does finish, however late, the
+            # thread finds the sentinel waiting and exits immediately instead
+            # of blocking forever on an empty queue with no owner left to
+            # stop it. Best-effort: if the queue is somehow already full this
+            # is skipped, matching stop()'s own best-effort sentinel push.
+            try:
+                self._translation_queue.put_nowait(None)
+            except queue.Full:
+                pass
             raise TranslationSetupError(
                 "The bundled offline translation model took too long to load."
             )
@@ -857,6 +883,23 @@ class HoverTranslator:
             raise TranslationSetupError(str(self._translation_init_error))
         log.info("OCR backend: %s", self.ocr_backend_display)
         log.info("translation backend: %s", self.translation_backend_display)
+
+    @property
+    def translation_backend_display(self):
+        """Live summary of which translation engines are actually active
+        right now, e.g. "JMdict words · Google phrases · offline fallback"
+        when all three are up, or "JMdict unavailable · Google phrases ·
+        offline fallback" if JMdict failed to open. Recomputed on every
+        access from _dictionary_active/_phrase_translator_active, which
+        _translation_loop keeps up to date -- so this reflects a later
+        degrade (or automatic recovery) too, not just the state at startup."""
+        dictionary_part = (
+            "JMdict words" if self._dictionary_active else "JMdict unavailable"
+        )
+        phrase_part = (
+            "Google phrases" if self._phrase_translator_active else "Google unavailable"
+        )
+        return f"{dictionary_part} · {phrase_part} · offline fallback"
 
     @staticmethod
     def clean_japanese_line(line):
@@ -1083,6 +1126,12 @@ class HoverTranslator:
                     "Google phrase translator initialization failed; using offline only"
                 )
         finally:
+            # Record what actually came up so translation_backend_display
+            # reflects reality from the very first read, not the hopeful
+            # case -- must be set before the event below, since __init__ is
+            # allowed to read these the instant wait() returns.
+            self._dictionary_active = dictionary is not None
+            self._phrase_translator_active = phrase_translator is not None
             # Unblocks HoverTranslator.__init__'s wait() no matter how the
             # startup above went -- __init__ then checks
             # self._translation_init_error to see whether it actually succeeded.
@@ -1107,6 +1156,7 @@ class HoverTranslator:
                     if dictionary is None and time.monotonic() >= dictionary_retry_after:
                         try:
                             dictionary = LocalJapaneseDictionary()
+                            self._dictionary_active = True
                             log.info("JMdict dictionary reopened after previous failure")
                         except Exception:
                             log.exception("JMdict retry failed; still using phrase translation")
@@ -1131,6 +1181,7 @@ class HoverTranslator:
                             log.exception("JMdict lookup failed; falling back to translation")
                             dictionary.close()
                             dictionary = None
+                            self._dictionary_active = False
                             dictionary_retry_after = (
                                 time.monotonic() + DICTIONARY_RETRY_COOLDOWN_SECONDS
                             )
@@ -1223,8 +1274,13 @@ class HoverTranslator:
     def in_cooldown(self, x, y):
         """True if (x, y) is within COOLDOWN_RADIUS_PX of the last trigger
         point and within COOLDOWN_SECONDS of it -- used by handle_dwell to
-        avoid re-running OCR/translate on a spot the user is still reading."""
+        avoid re-running OCR/translate on a spot the user is still reading.
+        Void (always False) once the cursor has already moved far enough
+        away to have auto-hidden that popup -- see
+        _cooldown_broken_by_distance's docstring in __init__ for why."""
         if self._last_trigger_pos is None:
+            return False
+        if self._cooldown_broken_by_distance:
             return False
         dx = x - self._last_trigger_pos[0]
         dy = y - self._last_trigger_pos[1]
@@ -1276,9 +1332,11 @@ class HoverTranslator:
 
         # Record the trigger regardless of whether text was actually found --
         # an empty-space hover still starts this spot's cooldown, so hovering
-        # blank space repeatedly doesn't re-run OCR every poll tick.
+        # blank space repeatedly doesn't re-run OCR every poll tick. A fresh
+        # trigger always starts with an intact (not yet broken) cooldown.
         self._last_trigger_pos = (x, y)
         self._last_trigger_time = time.monotonic()
+        self._cooldown_broken_by_distance = False
 
         if not text:
             log.info("dwell at (%d, %d): no text found (%s)", x, y, stage_label)
@@ -1343,6 +1401,20 @@ class HoverTranslator:
                 triggered_for_still = False
                 time.sleep(0.25)
                 continue
+
+            # Track whether the cursor has moved far enough from the last
+            # trigger point that OverlayWindow would have auto-hidden that
+            # popup by now (see HIDE_MOVE_DISTANCE_PX) -- once true, the
+            # cooldown for that spot is void (see in_cooldown / handle_dwell
+            # / _cooldown_broken_by_distance's docstring in __init__).
+            # Checked on every poll tick, independent of the jitter/dwell
+            # state below, so it catches the move even if the cursor doesn't
+            # end up settling anywhere new.
+            if self._last_trigger_pos is not None and not self._cooldown_broken_by_distance:
+                trigger_dx = x - self._last_trigger_pos[0]
+                trigger_dy = y - self._last_trigger_pos[1]
+                if (trigger_dx * trigger_dx + trigger_dy * trigger_dy) ** 0.5 > HIDE_MOVE_DISTANCE_PX:
+                    self._cooldown_broken_by_distance = True
 
             if still_pos is None:
                 still_pos = (x, y)

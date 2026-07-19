@@ -75,6 +75,8 @@ class WorkerResilienceTests(unittest.TestCase):
         translator.enabled = True
         translator.ui_queue = queue.Queue()
         translator._last_runtime_error_notice = 0.0
+        translator._last_trigger_pos = None
+        translator._cooldown_broken_by_distance = False
 
         calls = {"count": 0}
 
@@ -94,6 +96,104 @@ class WorkerResilienceTests(unittest.TestCase):
         self.assertEqual(calls["count"], 1)
         event = translator.ui_queue.get_nowait()
         self.assertEqual(event[0], "runtime_error")
+
+
+class CooldownDistanceResetTests(unittest.TestCase):
+    """A deliberate re-hover of the same spot, after moving far enough away
+    to have auto-hidden that popup, must not be swallowed by the cooldown
+    meant only for tiny jitter. See HoverTranslator._cooldown_broken_by_distance."""
+
+    def _translator(self):
+        translator = ht.HoverTranslator.__new__(ht.HoverTranslator)
+        translator._last_trigger_pos = (500, 500)
+        translator._last_trigger_time = ht.time.monotonic()
+        translator._cooldown_broken_by_distance = False
+        return translator
+
+    def test_in_cooldown_true_for_a_nearby_recent_trigger(self):
+        translator = self._translator()
+        self.assertTrue(translator.in_cooldown(510, 505))  # well within COOLDOWN_RADIUS_PX
+
+    def test_in_cooldown_false_once_broken_by_distance(self):
+        translator = self._translator()
+        translator._cooldown_broken_by_distance = True
+        # Same nearby point that test_in_cooldown_true_for_a_nearby_recent_trigger
+        # proves would otherwise be in cooldown.
+        self.assertFalse(translator.in_cooldown(510, 505))
+
+    def test_dwell_watch_loop_breaks_cooldown_after_moving_past_hide_distance(self):
+        translator = self._translator()
+        translator.running = True
+        translator.enabled = True
+
+        far_point = (
+            translator._last_trigger_pos[0] + ht.HIDE_MOVE_DISTANCE_PX + 1,
+            translator._last_trigger_pos[1],
+        )
+
+        def get_pos_once():
+            # Stop the loop after this one poll -- dwell_watch_loop is an
+            # infinite loop until self.running goes False.
+            translator.running = False
+            return far_point
+
+        with mock.patch.object(ht, "POLL_INTERVAL_SECONDS", 0), mock.patch.object(
+            ht, "get_cursor_pos", side_effect=get_pos_once
+        ), mock.patch.object(ht.time, "sleep", return_value=None):
+            translator.dwell_watch_loop()
+
+        self.assertTrue(translator._cooldown_broken_by_distance)
+        # And in_cooldown must now be False for a spot near the original
+        # trigger, exactly the scenario this fix targets.
+        self.assertFalse(translator.in_cooldown(505, 500))
+
+    def test_handle_dwell_resets_the_flag_on_a_fresh_trigger(self):
+        translator = self._translator()
+        translator._cooldown_broken_by_distance = True
+        translator._job_counter = 0
+        translator.ui_queue = queue.Queue()
+        translator._tagger = mock.MagicMock(return_value=[])
+        translator._kb_controller = mock.MagicMock()
+
+        with mock.patch.object(
+            ht, "get_selected_text", return_value=None
+        ), mock.patch.object(
+            translator, "capture_region", return_value=object()
+        ), mock.patch.object(
+            translator, "ocr", return_value=""
+        ):
+            translator.handle_dwell(700, 700)
+
+        self.assertFalse(translator._cooldown_broken_by_distance)
+
+
+class TranslationBackendDisplayTests(unittest.TestCase):
+    """translation_backend_display must reflect which engines are actually
+    active, not a fixed string set before startup finished -- see
+    HoverTranslator._dictionary_active / _phrase_translator_active."""
+
+    def _translator(self, dictionary_active, phrase_translator_active):
+        translator = ht.HoverTranslator.__new__(ht.HoverTranslator)
+        translator._dictionary_active = dictionary_active
+        translator._phrase_translator_active = phrase_translator_active
+        return translator
+
+    def test_all_backends_active(self):
+        translator = self._translator(True, True)
+        self.assertEqual(
+            translator.translation_backend_display,
+            "JMdict words · Google phrases · offline fallback",
+        )
+
+    def test_jmdict_unavailable_is_reflected(self):
+        translator = self._translator(False, True)
+        self.assertIn("JMdict unavailable", translator.translation_backend_display)
+        self.assertIn("Google phrases", translator.translation_backend_display)
+
+    def test_google_unavailable_is_reflected(self):
+        translator = self._translator(True, False)
+        self.assertIn("JMdict words", translator.translation_backend_display)
+        self.assertIn("Google unavailable", translator.translation_backend_display)
 
 
 if __name__ == "__main__":

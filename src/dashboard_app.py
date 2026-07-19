@@ -1269,18 +1269,27 @@ class DashboardApp:
         tk.Label(runtime, text="System status", bg=CARD, fg=TEXT, font=H2).pack(
             anchor="w", padx=20, pady=(18, 12)
         )
+        # "Words" and "Phrases" use live variables (refreshed in _update_status)
+        # rather than fixed text -- HoverTranslator.translation_backend_display
+        # can change at runtime if JMdict or the Google client fails/recovers,
+        # and this panel should never claim a backend is up when it isn't.
+        self.settings_words_var = tk.StringVar(value="Local JMdict")
+        self.settings_phrases_var = tk.StringVar(value="Google + offline fallback")
         for label, value in (
             ("OCR", self.translator.ocr_backend_display),
-            ("Words", "Local JMdict"),
-            ("Phrases", "Google + offline fallback"),
+            ("Words", self.settings_words_var),
+            ("Phrases", self.settings_phrases_var),
             ("Study", "SM-2 scheduling"),
         ):
             row = tk.Frame(runtime, bg=CARD)
             row.pack(fill="x", padx=20, pady=5)
             tk.Label(row, text=label, bg=CARD, fg=FAINT, font=UI_SMALL).pack(side="left")
-            tk.Label(
-                row, text=value, bg=CARD, fg=TEXT, font=("Segoe UI Semibold", 9),
-            ).pack(side="right")
+            value_label = tk.Label(row, bg=CARD, fg=TEXT, font=("Segoe UI Semibold", 9))
+            if isinstance(value, tk.Variable):
+                value_label.config(textvariable=value)
+            else:
+                value_label.config(text=value)
+            value_label.pack(side="right")
         tk.Frame(runtime, bg=CARD, height=8).pack()
 
         # --- Right column, card 2: where local data files live, for
@@ -1448,9 +1457,13 @@ class DashboardApp:
 
     def _update_status(self):
         """Repaint every on/off-dependent bit of UI: status card text and
-        color, both toggle buttons' label/color/hover-color, and the two
-        status dots (Overview card + sidebar). Called after every change to
-        translator.enabled, from three different call sites."""
+        color, both toggle buttons' label/color/hover-color, the two status
+        dots (Overview card + sidebar), and the Settings page's live
+        Words/Phrases backend labels. Called after every change to
+        translator.enabled, from three different call sites -- also the
+        only place that refreshes the backend labels, so a JMdict/Google
+        failure or recovery becomes visible next time the user toggles the
+        engine, not just at startup."""
         on = self.translator.enabled
         self.status_text_var.set("Hover translation is ON" if on else "Hover translation is OFF")
         self.status_sub_var.set(
@@ -1460,6 +1473,16 @@ class DashboardApp:
             if on else "Paused — press the button (or your toggle key) to resume."
         )
         self.toggle_btn_var.set("Turn off" if on else "Turn on")
+        if hasattr(self, "settings_words_var"):
+            self.settings_words_var.set(
+                "Local JMdict" if self.translator._dictionary_active else "Unavailable"
+            )
+        if hasattr(self, "settings_phrases_var"):
+            self.settings_phrases_var.set(
+                "Google + offline fallback"
+                if self.translator._phrase_translator_active
+                else "Offline fallback only"
+            )
         normal = self._toggle_colors(on)
         hover = "#fecdca" if on else ACCENT_HOVER
         for button in (self.toggle_btn, getattr(self, "settings_toggle", None)):
