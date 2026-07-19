@@ -1,9 +1,9 @@
 # Japanese Hover Translator
 
+[![Tests](https://github.com/marclourens19/japanese-hover-translator/actions/workflows/tests.yml/badge.svg)](https://github.com/marclourens19/japanese-hover-translator/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)](#install-and-run-from-source)
 [![Python 3.9–3.14](https://img.shields.io/badge/python-3.9%E2%80%933.14-3776AB)](#install-and-run-from-source)
-[![Tests: unittest](https://img.shields.io/badge/tests-unittest-4c1)](#reliability-logs-and-tests)
 
 A Windows study tool that translates Japanese text when you pause the mouse over it.
 It combines cursor-anchored OCR, local JMdict word definitions, phrase translation,
@@ -188,6 +188,11 @@ python -m unittest discover -s tests -t . -v
 noise/confidence filtering, hover-worker recovery, real JMdict lookup and inflection,
 translation fallback and caching, atomic settings, legacy database migration, SM-2
 transitions, and physical log rotation.
+
+Every push and pull request against `main` runs the full suite on a Windows GitHub
+Actions runner (see the badge at the top of this file and
+[`.github/workflows/tests.yml`](.github/workflows/tests.yml)) — the same command shown
+above, on the same Windows platform the app actually targets.
 
 ## Default hotkeys
 

@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    # This is a Windows-only app (ctypes windll, pynput global hooks, winrt,
+    # tkinter overlay geometry) -- the test suite mocks out anything that
+    # would need real hardware/OCR-language-pack access, but it still needs
+    # to import the same win32-specific modules the app does, so this has to
+    # run on a Windows runner, not ubuntu-latest.
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository (with LFS)
+        uses: actions/checkout@v4
+        with:
+          # test_dictionary.py looks up real JMdict entries, so the actual
+          # bundled database (tracked via Git LFS) has to be checked out,
+          # not the small pointer file LFS leaves behind by default.
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run test suite
+        run: python -m unittest discover -s tests -t . -v
