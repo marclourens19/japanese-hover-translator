@@ -52,9 +52,12 @@ class GetSelectedTextGuardTests(unittest.TestCase):
 class GetSelectedTextClipboardOutcomeTests(unittest.TestCase):
     def _run(self, original, copied):
         controller = fake_kb_controller()
+        paste = mock.patch.object(
+            ht, "_clipboard_paste_with_retry", side_effect=[original, copied]
+        )
         with mock.patch.object(ht, "cursor_is_over_focused_window", return_value=True), \
                 mock.patch.object(ht, "focused_window_is_console", return_value=False), \
-                mock.patch.object(ht, "_clipboard_paste_with_retry", side_effect=[original, copied]), \
+                paste, \
                 mock.patch.object(ht, "_clipboard_copy_with_retry", return_value=True) as restore, \
                 mock.patch.object(ht.time, "sleep"):
             result = ht.get_selected_text(controller, 10, 10)

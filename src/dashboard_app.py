@@ -20,7 +20,6 @@ Run:
 import queue
 import sqlite3
 import threading
-import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -1348,7 +1347,9 @@ class DashboardApp:
             self.translator.enabled = False
         self._recording_action = action
         self._refresh_settings_hotkeys()
-        self.settings_status_var.set(f"Press the key you want for “{action}” …  (Esc to cancel)")
+        self.settings_status_var.set(
+            f"Press the key you want for “{action}” …  (Esc to cancel)"
+        )
 
     def _cancel_recording(self):
         """Abandon an in-progress hotkey recording without applying anything
@@ -1385,7 +1386,8 @@ class DashboardApp:
         for other in ("toggle", "pin", "save"):
             if other != action and self.config["hotkeys"][other] == key_str:
                 self.settings_status_var.set(
-                    f"{ht.key_display(key_str)} is already used for “{other}”. Pick another key."
+                    f"{ht.key_display(key_str)} is already used for "
+                    f"“{other}”. Pick another key."
                 )
                 self._refresh_settings_hotkeys()
                 return
@@ -1414,7 +1416,9 @@ class DashboardApp:
         previous_config = dict(self.config["hotkeys"])
         previous_hotkeys = dict(self.hotkeys)
         self.config["hotkeys"] = dict(ht.DEFAULT_HOTKEYS)
-        self.hotkeys = {a: ht.str_to_key(self.config["hotkeys"][a]) for a in ("toggle", "pin", "save")}
+        self.hotkeys = {
+            a: ht.str_to_key(self.config["hotkeys"][a]) for a in ("toggle", "pin", "save")
+        }
         if not ht.save_config(self.config):
             self.config["hotkeys"] = previous_config
             self.hotkeys = previous_hotkeys

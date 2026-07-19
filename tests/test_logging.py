@@ -1,8 +1,8 @@
 import logging
-from pathlib import Path
 import tempfile
 import unittest
 import uuid
+from pathlib import Path
 
 from app_logging import LOG_FILE_NAME, configure_logging
 

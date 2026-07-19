@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, timezone
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from spaced_repetition import (
     ReviewState,
@@ -9,7 +9,6 @@ from spaced_repetition import (
     schedule_review,
     stage_label,
 )
-
 
 NOW = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
 

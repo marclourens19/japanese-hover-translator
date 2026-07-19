@@ -1,17 +1,16 @@
 """Google phrase translation with bounded latency, cache, and offline fallback."""
 
-from collections import OrderedDict
 import logging
-from pathlib import Path
 import sqlite3
 import threading
 import time
+from collections import OrderedDict
+from pathlib import Path
 
-from deep_translator import GoogleTranslator
 import deep_translator.google as google_module
+from deep_translator import GoogleTranslator
 
 from offline_translation import normalize_source_text
-
 
 GOOGLE_TIMEOUT = (2.5, 4.5)
 GOOGLE_RETRY_BACKOFF_SECONDS = 60

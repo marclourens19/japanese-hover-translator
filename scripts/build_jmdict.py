@@ -7,8 +7,8 @@ Usage:
 
 import argparse
 import json
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 
 
 def choose_headword(entry):

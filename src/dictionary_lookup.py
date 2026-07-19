@@ -1,12 +1,11 @@
 """Fast offline Japanese-English word lookup backed by bundled JMdict data."""
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
 
 from offline_translation import resource_root
-
 
 DICTIONARY_RELATIVE_PATH = Path("data") / "jmdict_english.sqlite3"
 MAX_ENTRIES = 3

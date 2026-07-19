@@ -113,9 +113,10 @@ class WindowsOcrSyncWrapperTests(unittest.TestCase):
         writer = mock.Mock()
         writer.detach_buffer.return_value = mock.Mock()
 
+        bitmap_patch = mock.patch("winrt.windows.graphics.imaging.SoftwareBitmap")
         with mock.patch("winrt.windows.globalization.Language"), \
                 mock.patch("winrt.windows.media.ocr.OcrEngine") as ocr_engine_cls, \
-                mock.patch("winrt.windows.graphics.imaging.SoftwareBitmap") as software_bitmap_cls, \
+                bitmap_patch as software_bitmap_cls, \
                 mock.patch("winrt.windows.storage.streams.DataWriter", return_value=writer):
             ocr_engine_cls.is_language_supported.return_value = True
             ocr_engine_cls.try_create_from_language.return_value = engine
@@ -139,9 +140,10 @@ class WindowsOcrSyncWrapperTests(unittest.TestCase):
         writer = mock.Mock()
         writer.detach_buffer.return_value = mock.Mock()
 
+        bitmap_patch = mock.patch("winrt.windows.graphics.imaging.SoftwareBitmap")
         with mock.patch("winrt.windows.globalization.Language"), \
                 mock.patch("winrt.windows.media.ocr.OcrEngine") as ocr_engine_cls, \
-                mock.patch("winrt.windows.graphics.imaging.SoftwareBitmap") as software_bitmap_cls, \
+                bitmap_patch as software_bitmap_cls, \
                 mock.patch("winrt.windows.storage.streams.DataWriter", return_value=writer):
             ocr_engine_cls.is_language_supported.return_value = True
             ocr_engine_cls.try_create_from_language.return_value = engine

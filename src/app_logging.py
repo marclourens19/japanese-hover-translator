@@ -6,12 +6,11 @@ used during startup, before OCR, Tk, or the translation model is initialized.
 """
 
 import logging
-from logging.handlers import RotatingFileHandler
 import os
-from pathlib import Path
 import sys
 import threading
-
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 LOG_DIRECTORY_NAME = "logs"
 LOG_FILE_NAME = "JapaneseHoverTranslator.log"

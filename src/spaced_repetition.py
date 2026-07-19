@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-
 MIN_EASE_FACTOR = 1.3
 DEFAULT_EASE_FACTOR = 2.5
 RATING_QUALITY = {

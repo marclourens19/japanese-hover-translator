@@ -196,6 +196,13 @@ Actions runner (see the badge at the top of this file and
 [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) — the same command shown
 above, on the same Windows platform the app actually targets.
 
+Linting uses [ruff](https://docs.astral.sh/ruff/) (`pip install -r requirements-dev.txt`),
+configured in [`pyproject.toml`](pyproject.toml) and enforced in CI alongside the test suite:
+
+```powershell
+python -m ruff check .
+```
+
 ## Engineering notes
 
 [`docs/engineering-notes.md`](docs/engineering-notes.md) has write-ups of bugs worth

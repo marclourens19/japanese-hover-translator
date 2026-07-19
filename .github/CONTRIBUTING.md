@@ -20,6 +20,13 @@ python -m unittest discover -s tests -t . -v
 
 or `scripts\run_tests.cmd`. All 62+ tests should pass before and after your change.
 
+Lint with [ruff](https://docs.astral.sh/ruff/) (`pip install -r requirements-dev.txt`, config
+in `pyproject.toml`), enforced in CI alongside the tests:
+
+```powershell
+python -m ruff check .
+```
+
 ## Where things live
 
 The module docstrings and class/method docstrings throughout the codebase are

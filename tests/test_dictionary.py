@@ -2,8 +2,8 @@ import unittest
 
 import fugashi
 
-from dictionary_lookup import LocalJapaneseDictionary
 import hover_translate as ht
+from dictionary_lookup import LocalJapaneseDictionary
 
 
 class DictionaryTests(unittest.TestCase):

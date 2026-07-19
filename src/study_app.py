@@ -269,7 +269,10 @@ class StudyApp:
             "SELECT id, surface_text, translation, dict_forms FROM saved_words WHERE learned = 0"
         ).fetchall()
         if not rows:
-            self.status_label.config(text="No unlearned words to study -- save some from the hover overlay first (F10 then F11).")
+            self.status_label.config(
+                text="No unlearned words to study -- save some from the hover overlay "
+                "first (F10 then F11)."
+            )
             return
         random.shuffle(rows)
         self.study_queue = rows

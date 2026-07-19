@@ -5,15 +5,15 @@ build time. Runtime inference needs only ctranslate2 and sentencepiece: no
 PyTorch, cloud API, API key, or network connection.
 """
 
-from collections import OrderedDict
 import json
 import os
-from pathlib import Path
 import re
 import sqlite3
 import sys
 import time
 import unicodedata
+from collections import OrderedDict
+from pathlib import Path
 
 import ctranslate2
 import sentencepiece as spm

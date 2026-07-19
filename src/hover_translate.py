@@ -77,7 +77,6 @@ Known limitations (found via manual + automated hover testing):
 import asyncio
 import ctypes
 import ctypes.wintypes
-from datetime import timedelta
 import json
 import os
 import queue
@@ -87,6 +86,7 @@ import sqlite3
 import sys
 import threading
 import time
+from datetime import timedelta
 from pathlib import Path
 
 import fugashi
@@ -97,6 +97,7 @@ from pynput import keyboard
 
 from app_logging import configure_logging, install_exception_logging
 from dictionary_lookup import LocalJapaneseDictionary
+
 # Must stay a module-level (eager) import, and must stay above any winrt
 # import in this file. offline_translation pulls in ctranslate2, which
 # carries a newer MSVCP140 than the one winrt-runtime bundles privately; in a
@@ -912,7 +913,11 @@ class HoverTranslator:
         for word in self._tagger(line):
             surface = word.surface
             kana = word.feature.kana
-            reading = kata_to_hira(kana) if kana and kana != "*" and KANJI_RE.search(surface) else None
+            reading = (
+                kata_to_hira(kana)
+                if kana and kana != "*" and KANJI_RE.search(surface)
+                else None
+            )
             tokens.append((surface, reading))
         return tokens
 
@@ -1141,7 +1146,8 @@ class HoverTranslator:
         # that made it past OCR, until stop() pushes a None sentinel. ===
         try:
             while True:
-                item = self._translation_queue.get()  # blocks until a job (or the None sentinel) arrives
+                # blocks until a job (or the None stop sentinel) arrives
+                item = self._translation_queue.get()
                 if item is None:
                     break
                 job_id, source_text, dictionary_candidates = item
@@ -1413,7 +1419,8 @@ class HoverTranslator:
             if self._last_trigger_pos is not None and not self._cooldown_broken_by_distance:
                 trigger_dx = x - self._last_trigger_pos[0]
                 trigger_dy = y - self._last_trigger_pos[1]
-                if (trigger_dx * trigger_dx + trigger_dy * trigger_dy) ** 0.5 > HIDE_MOVE_DISTANCE_PX:
+                trigger_dist = (trigger_dx * trigger_dx + trigger_dy * trigger_dy) ** 0.5
+                if trigger_dist > HIDE_MOVE_DISTANCE_PX:
                     self._cooldown_broken_by_distance = True
 
             if still_pos is None:
@@ -1574,7 +1581,8 @@ def init_study_db(path=STUDY_DB_PATH, now=None):
             UPDATE saved_words
                SET repetitions = CASE WHEN learned = 1 THEN 2 ELSE repetitions END,
                    interval_days = CASE WHEN learned = 1 THEN 6 ELSE interval_days END,
-                   review_count = CASE WHEN learned = 1 THEN MAX(review_count, 2) ELSE review_count END,
+                   review_count = CASE WHEN learned = 1
+                                       THEN MAX(review_count, 2) ELSE review_count END,
                    due_at = CASE WHEN learned = 1 THEN ? ELSE ? END
              WHERE due_at IS NULL OR due_at = ''
             """,

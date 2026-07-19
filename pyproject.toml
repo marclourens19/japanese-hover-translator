@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+exclude = ["build", "dist", ".venv"]
+
+[tool.ruff.lint]
+# E/W  -- pycodestyle style checks (includes E501 line-length, enforced at 100)
+# F    -- pyflakes (unused imports/variables, undefined names, real bugs)
+# I    -- isort-style import ordering
+select = ["E", "W", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# study_app.py's StudyApp class is retained for source-history reference only
+# (its __init__ raises immediately -- see the class docstring) and imports
+# names its dead body still refers to.
+"src/study_app.py" = ["F401"]

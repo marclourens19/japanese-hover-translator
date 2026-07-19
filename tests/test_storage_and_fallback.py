@@ -1,14 +1,14 @@
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+import json
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest import mock
-import json
 
 import hover_translate as ht
 from phrase_translation import GooglePhraseTranslator
-from spaced_repetition import format_db_datetime, parse_db_datetime, schedule_review, ReviewState
+from spaced_repetition import ReviewState, format_db_datetime, parse_db_datetime, schedule_review
 
 
 class StudyMigrationTests(unittest.TestCase):
