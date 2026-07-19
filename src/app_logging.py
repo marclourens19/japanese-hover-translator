@@ -11,6 +11,7 @@ import sys
 import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Optional, Tuple, Union
 
 LOG_DIRECTORY_NAME = "logs"
 LOG_FILE_NAME = "JapaneseHoverTranslator.log"
@@ -20,13 +21,13 @@ LOGGER_NAME = "japanese_hover_translator"
 
 
 def configure_logging(
-    app_data_directory,
+    app_data_directory: Union[str, "os.PathLike[str]"],
     *,
-    logger_name=LOGGER_NAME,
-    max_bytes=LOG_MAX_BYTES,
-    backup_count=LOG_BACKUP_COUNT,
-    console=None,
-):
+    logger_name: str = LOGGER_NAME,
+    max_bytes: int = LOG_MAX_BYTES,
+    backup_count: int = LOG_BACKUP_COUNT,
+    console: Optional[bool] = None,
+) -> Tuple[logging.Logger, Path]:
     """Return ``(logger, log_path)`` with bounded file and optional console logs.
 
     Repeated calls for the same logger are idempotent. Tests may pass a unique
@@ -77,29 +78,33 @@ def configure_logging(
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
 
-    logger._jht_configured_path = str(log_path)
+    logger._jht_configured_path = str(log_path)  # type: ignore[attr-defined]
     return logger, log_path
 
 
-def install_exception_logging(logger):
+def install_exception_logging(logger: logging.Logger) -> None:
     """Log otherwise-uncaught main-thread and background-thread exceptions."""
     previous_sys_hook = sys.excepthook
 
-    def sys_hook(exc_type, exc_value, traceback):
+    def sys_hook(
+        exc_type: type,
+        exc_value: BaseException,
+        traceback: object,
+    ) -> None:
         """Replacement for sys.excepthook -- logs instead of (only) printing
         to stderr, which the packaged --windowed build has none of anyway."""
         if issubclass(exc_type, KeyboardInterrupt):
-            previous_sys_hook(exc_type, exc_value, traceback)
+            previous_sys_hook(exc_type, exc_value, traceback)  # type: ignore[arg-type]
             return
         logger.critical(
             "uncaught application exception",
-            exc_info=(exc_type, exc_value, traceback),
+            exc_info=(exc_type, exc_value, traceback),  # type: ignore[arg-type]
         )
 
     sys.excepthook = sys_hook
 
     if hasattr(threading, "excepthook"):
-        def thread_hook(args):
+        def thread_hook(args: "threading.ExceptHookArgs") -> None:
             """threading.excepthook replacement -- without this, an
             exception in a background thread (dwell worker, translation
             worker, hotkey listener) would print to stderr (invisible in a
@@ -109,7 +114,7 @@ def install_exception_logging(logger):
             logger.critical(
                 "uncaught exception in thread %s",
                 getattr(args.thread, "name", "unknown"),
-                exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+                exc_info=(args.exc_type, args.exc_value, args.exc_traceback),  # type: ignore[arg-type]
             )
 
         threading.excepthook = thread_hook

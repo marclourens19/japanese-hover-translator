@@ -1,1 +1,4 @@
 ruff==0.15.22
+mypy==2.3.0
+types-pyperclip==1.11.0.20260508
+types-pynput==1.8.1.20260712

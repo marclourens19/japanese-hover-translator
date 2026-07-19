@@ -14,6 +14,7 @@ import random
 import sqlite3
 import tkinter as tk
 from tkinter import ttk
+from typing import Any
 
 # This file lives in src/, one level below the project root -- go up twice so
 # this (unreachable -- see StudyApp below) constant would still point at the
@@ -36,7 +37,7 @@ DETAIL_FONT = ("Segoe UI", 12)
 SMALL_FONT = ("Segoe UI", 9)
 
 
-def init_db():
+def init_db() -> sqlite3.Connection:
     conn = sqlite3.connect(STUDY_DB_PATH)
     conn.execute(
         """
@@ -66,7 +67,7 @@ class StudyApp:
     body is deliberately left in place as-is rather than deleted.
     """
 
-    def __init__(self, root):
+    def __init__(self, root: Any) -> None:
         raise RuntimeError(
             "StudyApp is retained for reference only and must not be run -- "
             "it writes a legacy learned flag that bypasses SM-2 scheduling "

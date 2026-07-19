@@ -22,6 +22,7 @@ import sqlite3
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pynput import keyboard
 
@@ -75,7 +76,7 @@ CHIP_FONT = ("Segoe UI Semibold", 9)
 # simulates Ctrl+C, whose synthetic Ctrl press would otherwise be captured as
 # the "recorded" key. (The engine is also paused during recording; this is a
 # belt-and-suspenders guard.)
-MODIFIER_KEYS = set()
+MODIFIER_KEYS: set = set()
 
 SEARCH_PLACEHOLDER_TEXT = "Search word or meaning…"
 for _name in (
@@ -106,7 +107,7 @@ class DashboardApp:
     `root.after`. See `_poll_queue` and `_on_key_press` for the two producers.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Load persisted config, start the hover engine and its background
         threads, build the window, and land on the Overview page. Raises
         ht.OcrSetupError / ht.TranslationSetupError (from HoverTranslator's
@@ -114,14 +115,14 @@ class DashboardApp:
         can be made to work -- see the top-level __main__ guard below for how
         that's surfaced to the user."""
         ht.init_study_db()
-        self.config = ht.load_config()
+        self.config: Dict[str, Any] = ht.load_config()
         self.hotkeys = {
             action: ht.str_to_key(self.config["hotkeys"][action])
             for action in ("toggle", "pin", "save")
         }
-        self._recording_action = None  # set while capturing a new hotkey
+        self._recording_action: Optional[str] = None  # set while capturing a new hotkey
 
-        self.ui_queue: queue.Queue = queue.Queue()
+        self.ui_queue: "queue.Queue[Any]" = queue.Queue()
         self.translator = ht.HoverTranslator(self.ui_queue)
 
         # One connection, used only on the Tk main thread (the engine never
@@ -152,10 +153,10 @@ class DashboardApp:
         self.settings_status_var = tk.StringVar(value="")
 
         # page + nav registries
-        self.pages = {}
-        self.nav_buttons = {}
-        self.hotkey_key_labels = {}
-        self.hotkey_change_buttons = {}
+        self.pages: Dict[str, tk.Frame] = {}
+        self.nav_buttons: Dict[str, tk.Label] = {}
+        self.hotkey_key_labels: Dict[str, tk.Label] = {}
+        self.hotkey_change_buttons: Dict[str, tk.Button] = {}
 
         self._build_layout()
 
@@ -179,7 +180,7 @@ class DashboardApp:
 
     # ------------------------------------------------------------------ style
 
-    def _init_style(self):
+    def _init_style(self) -> None:
         """ttk widgets (Treeview, Scrollbar, Progressbar) don't take plain
         bg=/fg= kwargs like tk widgets do -- their look is set once here via
         ttk.Style so they match the rest of the light theme."""
@@ -213,7 +214,14 @@ class DashboardApp:
 
     # ---------------------------------------------------------------- widgets
 
-    def _button(self, parent, text=None, command=None, kind="primary", textvariable=None):
+    def _button(
+        self,
+        parent: tk.Misc,
+        text: Optional[str] = None,
+        command: Optional[Any] = None,
+        kind: str = "primary",
+        textvariable: Optional[tk.Variable] = None,
+    ) -> tk.Button:
         """Flat-styled tk.Button in one of four color variants, with a manual
         hover-color swap (tk.Button has no hover state of its own)."""
         palette = {
@@ -223,8 +231,12 @@ class DashboardApp:
             "good": (GOOD_SOFT_BG, GOOD_SOFT_FG, "#bbf7d0"),
         }
         bg, fg, hover = palette[kind]
+        # text/textvariable/command are Optional here because callers pass
+        # exactly one of text or textvariable (never both) -- tkinter itself
+        # silently drops any None-valued option, but its type stubs don't
+        # reflect that, hence the ignore.
         btn = tk.Button(
-            parent, text=text, textvariable=textvariable, command=command,
+            parent, text=text, textvariable=textvariable, command=command,  # type: ignore[arg-type]
             bg=bg, fg=fg, activebackground=hover, activeforeground=fg,
             relief="flat", font=UI_BOLD, padx=16, pady=9, cursor="hand2",
             borderwidth=0, highlightthickness=0,
@@ -233,14 +245,14 @@ class DashboardApp:
         btn.bind("<Leave>", lambda e: btn.config(bg=bg))
         return btn
 
-    def _card(self, parent):
+    def _card(self, parent: tk.Misc) -> tk.Frame:
         """White, thin-bordered container frame -- the basic building block
         of every page (status card, metric tiles, settings sections, etc.)."""
         return tk.Frame(
             parent, bg=CARD, highlightbackground=BORDER, highlightthickness=1,
         )
 
-    def _chip(self, parent, text):
+    def _chip(self, parent: tk.Misc, text: str) -> tk.Label:
         """Small rounded-looking label used for hotkey badges and the
         saved-word stage indicator (New/Learning/Review)."""
         return tk.Label(
@@ -250,7 +262,7 @@ class DashboardApp:
 
     # ----------------------------------------------------------------- layout
 
-    def _build_layout(self):
+    def _build_layout(self) -> None:
         """One-time construction of the whole window: the dark sidebar (brand
         mark, nav links, running/paused status pill) plus the light content
         area that the three pages are built into and swapped within (see
@@ -294,9 +306,14 @@ class DashboardApp:
                 cursor="hand2",
             )
             btn.pack(fill="x", padx=12, pady=2)
-            btn.bind("<Button-1>", lambda _event, k=key: self.show_page(k))
-            btn.bind("<Enter>", lambda _event, k=key: self._nav_hover(k, True))
-            btn.bind("<Leave>", lambda _event, k=key: self._nav_hover(k, False))
+            # The k=key default-argument trick captures each loop iteration's
+            # key by value (a bare closure over `key` would see only its
+            # final loop value by the time any of these fire) -- mypy can't
+            # infer a bind() callback with an extra defaulted parameter like
+            # this, hence the ignores below.
+            btn.bind("<Button-1>", lambda _event, k=key: self.show_page(k))  # type: ignore[misc]
+            btn.bind("<Enter>", lambda _event, k=key: self._nav_hover(k, True))  # type: ignore[misc]
+            btn.bind("<Leave>", lambda _event, k=key: self._nav_hover(k, False))  # type: ignore[misc]
             self.nav_buttons[key] = btn
 
         footer = tk.Frame(sidebar, bg="#0b1220")
@@ -325,7 +342,7 @@ class DashboardApp:
         self._build_saved()
         self._build_settings()
 
-    def _nav_hover(self, key, entering):
+    def _nav_hover(self, key: str, entering: bool) -> None:
         """<Enter>/<Leave> handler for one sidebar nav item; no-ops on the
         currently active page so it doesn't visually flicker under the mouse."""
         if self._active_page == key:
@@ -335,7 +352,7 @@ class DashboardApp:
             fg="#ffffff" if entering else SIDEBAR_TEXT,
         )
 
-    def show_page(self, key):
+    def show_page(self, key: str) -> None:
         """Switch the visible page to one of "home"/"saved"/"settings".
 
         All three page frames already exist (built once in _build_layout);
@@ -364,7 +381,9 @@ class DashboardApp:
             self._exit_study()
             self._refresh_saved_list()
 
-    def _page_header(self, parent, title, subtitle, eyebrow=None):
+    def _page_header(
+        self, parent: tk.Misc, title: str, subtitle: str, eyebrow: Optional[str] = None
+    ) -> None:
         """Shared page-title block (small caps "eyebrow" label, big title,
         muted subtitle) used at the top of all three pages."""
         if eyebrow:
@@ -377,7 +396,7 @@ class DashboardApp:
             parent, text=subtitle, bg=BG, fg=MUTED, font=UI_FONT,
         ).pack(anchor="w", pady=(4, 16))
 
-    def _build_home(self):
+    def _build_home(self) -> None:
         """Build the Overview page: on/off status card, three metric tiles
         (saved words / due today / active OCR engine), a "how it works" list,
         and a live hotkey summary. Widgets that later methods update by
@@ -447,6 +466,7 @@ class DashboardApp:
             if isinstance(value, tk.Variable):
                 value_label.config(textvariable=value)
             else:
+                assert isinstance(value, str)
                 value_label.config(text=value)
             value_label.pack(anchor="w", padx=18)
             tk.Label(
@@ -496,7 +516,7 @@ class DashboardApp:
             kind="neutral",
         ).pack(anchor="w", padx=20, pady=(4, 18))
 
-    def _stat_row(self, parent, label, var):
+    def _stat_row(self, parent: tk.Misc, label: str, var: tk.Variable) -> None:
         """One "label ..... value" row bound live to a tk.Variable. Currently
         unused directly by _build_home (which builds metric tiles instead)
         but kept as a shared helper for any future simple label/value row."""
@@ -505,7 +525,7 @@ class DashboardApp:
         tk.Label(row, text=label, bg=CARD, fg=MUTED, font=UI_FONT).pack(side="left")
         tk.Label(row, textvariable=var, bg=CARD, fg=TEXT, font=UI_BOLD).pack(side="right")
 
-    def _refresh_hotkey_summary(self):
+    def _refresh_hotkey_summary(self) -> None:
         """Rebuild the Overview page's hotkey list and the sidebar footer
         hint from the current config -- called on load and after every
         successful rebind/reset so both stay in sync with what's actually
@@ -524,7 +544,7 @@ class DashboardApp:
             f"{ht.key_display(self.config['hotkeys']['toggle'])} toggles hover translation"
         )
 
-    def _build_saved(self):
+    def _build_saved(self) -> None:
         """Build the Saved words page: header + "Review due cards" button,
         a search/filter toolbar, and a body that holds two mutually-exclusive
         views swapped in place -- the word list (_build_saved_list_view,
@@ -584,10 +604,11 @@ class DashboardApp:
         filters = tk.Frame(toolbar, bg=CARD)
         filters.pack(side="left", padx=(8, 14), pady=10)
         self.saved_filter_var = tk.StringVar(value="all")
-        self.saved_filter_buttons = {}
+        self.saved_filter_buttons: Dict[str, tk.Button] = {}
         for key, label in (("all", "All words"), ("due", "Due now")):
             button = tk.Button(
-                filters, text=label, command=lambda k=key: self._set_saved_filter(k),
+                filters, text=label,
+                command=lambda k=key: self._set_saved_filter(k),  # type: ignore[misc]
                 relief="flat", borderwidth=0, highlightthickness=0, cursor="hand2",
                 font=UI_BOLD, padx=12, pady=7,
             )
@@ -600,11 +621,11 @@ class DashboardApp:
         self.saved_body = tk.Frame(inner, bg=BG)
         self.saved_body.pack(fill="both", expand=True)
         self._build_saved_list_view()
-        self.study_view = None
+        self.study_view: Optional[tk.Frame] = None
         self._set_saved_filter("all", refresh=False)
         self.saved_search_var.trace_add("write", lambda *_args: self._refresh_saved_list())
 
-    def _set_saved_filter(self, key, refresh=True):
+    def _set_saved_filter(self, key: str, refresh: bool = True) -> None:
         """Switch the All words / Due now toggle and restyle both buttons to
         show which is active. refresh=False is used only during initial page
         build, before the word list/tree even exists yet to refresh."""
@@ -620,14 +641,14 @@ class DashboardApp:
         if refresh:
             self._refresh_saved_list()
 
-    def _focus_in_search(self, _event=None):
+    def _focus_in_search(self, _event: Optional[Any] = None) -> None:
         """Clear the placeholder text when the search box gains focus."""
         if self._search_showing_placeholder:
             self._search_showing_placeholder = False
             self.saved_search_var.set("")
             self.saved_search_entry.config(fg=TEXT)
 
-    def _focus_out_search(self, _event=None):
+    def _focus_out_search(self, _event: Optional[Any] = None) -> None:
         """Restore the placeholder text when the search box loses focus
         empty (never overwrites text the user actually typed)."""
         if not self.saved_search_var.get():
@@ -635,7 +656,7 @@ class DashboardApp:
             self.saved_search_var.set(SEARCH_PLACEHOLDER_TEXT)
             self.saved_search_entry.config(fg=FAINT)
 
-    def _clear_search(self):
+    def _clear_search(self) -> None:
         """The "✕" button: empty the field and refocus it, so the user can
         start typing a new search immediately instead of the placeholder
         reappearing the instant focus leaves."""
@@ -644,7 +665,7 @@ class DashboardApp:
         self.saved_search_entry.config(fg=TEXT)
         self.saved_search_entry.focus_set()
 
-    def _build_saved_list_view(self):
+    def _build_saved_list_view(self) -> None:
         """Build the word-list half of the Saved words page: a Treeview of
         saved words on the left, a fixed-width detail/actions panel on the
         right. Rebuilt fresh each time _build_saved runs (i.e. once, at
@@ -731,7 +752,7 @@ class DashboardApp:
             actions, text="Delete", command=self._delete_selected, kind="danger",
         ).pack(side="left", fill="x", expand=True, padx=(4, 0))
 
-        self.selected_id = None
+        self.selected_id: Optional[int] = None
         self._clear_detail()
         # Pack the fixed-width detail panel first so Treeview's requested
         # column width cannot squeeze it at smaller supported window sizes.
@@ -740,7 +761,7 @@ class DashboardApp:
         detail.pack(side="right", fill="y", padx=(12, 0))
         tree_wrap.pack(side="left", fill="both", expand=True)
 
-    def _clear_detail(self):
+    def _clear_detail(self) -> None:
         """Reset the detail panel to its empty state -- shown on page load
         and whenever the previously-selected word disappears from the list
         (deleted, or filtered/searched out)."""
@@ -754,7 +775,7 @@ class DashboardApp:
         self.learned_btn.config(state="disabled")
 
     @staticmethod
-    def _due_label(value):
+    def _due_label(value: Optional[str]) -> str:
         """Format a saved_words.due_at value (DB string or NULL) as a short
         human-relative string ("Due now" / "In 3h" / "Tomorrow" / "In 5 days"
         / an absolute date past ~2 weeks out). value=None/NULL means "never
@@ -775,7 +796,7 @@ class DashboardApp:
             return f"In {days} days"
         return due_at.astimezone().strftime("%Y-%m-%d")
 
-    def _refresh_saved_list(self):
+    def _refresh_saved_list(self) -> None:
         """Rebuild the Treeview from the database using the current filter
         (all/due) and search text. Called after every mutation (save,
         delete, reset, review) and on every search keystroke (via the
@@ -784,8 +805,8 @@ class DashboardApp:
         for row in self.tree.get_children():
             self.tree.delete(row)
         now_text = format_db_datetime(utc_now())
-        conditions = []
-        params = []
+        conditions: List[str] = []
+        params: List[Any] = []
         if self.saved_filter_var.get() == "due":
             conditions.append("(due_at IS NULL OR due_at <= ?)")
             params.append(now_text)
@@ -828,7 +849,7 @@ class DashboardApp:
             self.selected_id = None
             self._clear_detail()
 
-    def _on_saved_select(self, _event):
+    def _on_saved_select(self, _event: Optional[Any]) -> None:
         """Treeview <<TreeviewSelect>> handler: load the full row for the
         newly-selected word and populate the detail panel. Also called
         directly with _event=None after a reset/save to refresh the panel
@@ -865,7 +886,7 @@ class DashboardApp:
         self.detail_saved.config(text=f"Saved {saved_at}")
         self.learned_btn.config(state="normal")
 
-    def _reset_schedule(self):
+    def _reset_schedule(self) -> None:
         """"Reset progress" button: wipe the selected word's SM-2 state back
         to a brand-new card (due immediately), after an explicit confirm
         since this discards real review history."""
@@ -898,7 +919,7 @@ class DashboardApp:
             self._on_saved_select(None)
         self._update_stats()
 
-    def _delete_selected(self):
+    def _delete_selected(self) -> None:
         """"Delete" button: permanently remove the selected word after an
         explicit confirm (this is the one truly irreversible action in the
         app -- there's no undo or trash)."""
@@ -918,7 +939,7 @@ class DashboardApp:
         self._refresh_saved_list()
         self._update_stats()
 
-    def _start_study(self):
+    def _start_study(self) -> None:
         """"Review due cards" button: load every due-or-never-reviewed word
         (oldest-due first) into self.study_queue and switch to the flashcard
         view. If nothing is due, shows a status message (with when the next
@@ -944,16 +965,17 @@ class DashboardApp:
                 message += f"  •  Next review {self._due_label(next_due).lower()}"
             self.saved_count_var.set(message)
             return
-        self.study_queue = rows
-        self.study_index = 0
-        self.study_revealed = False
+        self.study_queue: List[Tuple[Any, ...]] = rows
+        self.study_index: int = 0
+        self.study_revealed: bool = False
         self.saved_top.pack_forget()
         self.list_view.pack_forget()
         self._build_study_view()
+        assert self.study_view is not None  # _build_study_view always sets it
         self.study_view.pack(fill="both", expand=True)
         self._show_card()
 
-    def _build_study_view(self):
+    def _build_study_view(self) -> None:
         """(Re)build the flashcard view: progress bar, the card itself (word,
         then a reveal-hidden translation/dictionary-form area), and the
         Again/Hard/Good/Easy rating buttons. Rebuilt fresh on every
@@ -1053,7 +1075,7 @@ class DashboardApp:
         self.root.bind("<Key-3>", lambda _event: self._answer("good"))
         self.root.bind("<Key-4>", lambda _event: self._answer("easy"))
 
-    def _show_card(self):
+    def _show_card(self) -> None:
         """Render study_queue[study_index] in its un-revealed state (word
         only, Reveal button, rating buttons disabled/hidden). Ends the
         session via _exit_study once the index runs past the end of the
@@ -1077,7 +1099,7 @@ class DashboardApp:
         self.study_progress_bar["value"] = self.study_index + 1
         self.study_hint.config(text="Think of the meaning, then reveal the answer.")
 
-    def _reveal_card(self):
+    def _reveal_card(self) -> None:
         """Space bar / "Reveal answer" button: show the translation and
         dictionary form, swap the Reveal button for the four rating buttons.
         Guarded so a stray Space press elsewhere (or a second one before the
@@ -1096,7 +1118,7 @@ class DashboardApp:
             button.pack(side="left", padx=4)
         self.study_hint.config(text="Rate your recall. Keyboard shortcuts 1–4 also work.")
 
-    def _answer(self, rating):
+    def _answer(self, rating: str) -> None:
         """1-4 keys / rating buttons: run the current card through the SM-2
         scheduler (spaced_repetition.schedule_review) for the given rating
         ("again"/"hard"/"good"/"easy"), persist the new schedule, and advance
@@ -1146,7 +1168,7 @@ class DashboardApp:
         self.study_index += 1
         self._show_card()
 
-    def _unbind_study_keys(self):
+    def _unbind_study_keys(self) -> None:
         """Undo the global key bindings _build_study_view sets up. Called
         both from _exit_study and unconditionally from show_page, since
         leaving the bindings active while navigating to another page would
@@ -1155,7 +1177,7 @@ class DashboardApp:
         for key in ("<Key-1>", "<Key-2>", "<Key-3>", "<Key-4>"):
             self.root.unbind(key)
 
-    def _exit_study(self):
+    def _exit_study(self) -> None:
         """Leave the flashcard view and return to the word list -- used both
         for a deliberate "Exit review" click and automatically once the
         queue is exhausted (see _show_card). Also doubles as the general
@@ -1171,7 +1193,7 @@ class DashboardApp:
         self._refresh_saved_list()
         self._update_stats()
 
-    def _build_settings(self):
+    def _build_settings(self) -> None:
         """Build the Settings page: hotkey rows with per-action "Change"
         buttons (see _start_recording), a hover-translation on/off toggle
         mirroring the Overview page's, and a read-only System status /
@@ -1318,7 +1340,7 @@ class DashboardApp:
             ).pack(anchor="w", fill="x", padx=20)
         tk.Frame(storage, bg=CARD, height=12).pack()
 
-    def _refresh_settings_hotkeys(self):
+    def _refresh_settings_hotkeys(self) -> None:
         """Sync each hotkey row's chip (current key) and Change button label
         ("Change" vs "Press a key…") with self.config and self._recording_action."""
         for action in ("toggle", "pin", "save"):
@@ -1329,7 +1351,7 @@ class DashboardApp:
                 text="Press a key…" if self._recording_action == action else "Change"
             )
 
-    def _start_recording(self, action):
+    def _start_recording(self, action: str) -> None:
         """"Change" button: begin capturing a new hotkey for one of
         toggle/pin/save. This is a small cross-thread state machine:
         _start_recording (here, main thread) sets self._recording_action;
@@ -1351,7 +1373,7 @@ class DashboardApp:
             f"Press the key you want for “{action}” …  (Esc to cancel)"
         )
 
-    def _cancel_recording(self):
+    def _cancel_recording(self) -> None:
         """Abandon an in-progress hotkey recording without applying anything
         (called from show_page so navigating away mid-record can't leave the
         engine permanently paused with the next keystroke still being
@@ -1361,7 +1383,9 @@ class DashboardApp:
             self.translator.enabled = getattr(self, "_enabled_before_record", True)
             self._refresh_settings_hotkeys()
 
-    def _handle_hotkey_recorded(self, action, key):
+    def _handle_hotkey_recorded(
+        self, action: str, key: Optional[Union[keyboard.Key, keyboard.KeyCode]]
+    ) -> None:
         """Apply (or reject) a key captured while recording -- the main-thread
         half of the _start_recording state machine. Rejects: a stale event
         for an action no longer being recorded, a bare modifier key, Esc
@@ -1408,7 +1432,7 @@ class DashboardApp:
         self._refresh_hotkey_summary()
         self.settings_status_var.set(f"“{action}” set to {ht.key_display(key_str)}.")
 
-    def _reset_hotkeys(self):
+    def _reset_hotkeys(self) -> None:
         """"Restore default keys" button: revert all three hotkeys to
         ht.DEFAULT_HOTKEYS (F9/F10/F11) and persist, with the same
         roll-back-on-write-failure behavior as _handle_hotkey_recorded."""
@@ -1432,7 +1456,7 @@ class DashboardApp:
         self._refresh_hotkey_summary()
         self.settings_status_var.set("Hotkeys reset to defaults (F9 / F10 / F11).")
 
-    def _sync_overlay_labels(self):
+    def _sync_overlay_labels(self) -> None:
         """Push the current pin/save key labels into the hover overlay
         popup (see hover_translate.OverlayWindow.set_hotkey_labels) so its
         "📌 Pinned — F10 save · F9 unpin"-style banner always matches
@@ -1444,13 +1468,13 @@ class DashboardApp:
 
     # --------------------------------------------------------- engine control
 
-    def _toggle_enabled(self):
+    def _toggle_enabled(self) -> None:
         """Flip the engine on/off -- shared by the Overview "Turn off/on"
         button, the Settings page's mirrored toggle, and the toggle hotkey
         (via ui_queue, see _poll_queue)."""
         self._set_enabled(not self.translator.enabled)
 
-    def _set_enabled(self, value):
+    def _set_enabled(self, value: bool) -> None:
         """Set HoverTranslator.enabled directly and refresh the UI to match.
         Hides any visible overlay popup when turning off, since a paused
         engine showing a stale popup would be confusing."""
@@ -1459,7 +1483,7 @@ class DashboardApp:
             self.overlay.hide()
         self._update_status()
 
-    def _update_status(self):
+    def _update_status(self) -> None:
         """Repaint every on/off-dependent bit of UI: status card text and
         color, both toggle buttons' label/color/hover-color, the two status
         dots (Overview card + sidebar), and the Settings page's live
@@ -1493,16 +1517,21 @@ class DashboardApp:
             if button is None:
                 continue
             button.config(**normal)
-            button.bind("<Enter>", lambda event, color=hover: event.widget.config(bg=color))
+            # Same default-argument capture trick as the nav bindings above
+            # (bakes in this iteration's hover/normal colors), same reason
+            # mypy can't infer these lambdas.
+            button.bind(
+                "<Enter>", lambda event, color=hover: event.widget.config(bg=color)  # type: ignore[misc]
+            )
             button.bind(
                 "<Leave>",
-                lambda event, colors=normal: event.widget.config(**colors),
+                lambda event, colors=normal: event.widget.config(**colors),  # type: ignore[misc]
             )
         self.home_dot.config(fg=GOOD if on else FAINT)
         self.sidebar_dot.config(fg=GOOD if on else FAINT)
         self.sidebar_status_var.set("Running" if on else "Paused")
 
-    def _toggle_colors(self, on):
+    def _toggle_colors(self, on: bool) -> Dict[str, str]:
         """Color kwargs for the toggle button: red "Turn off" while running
         (it's the button you'd press to stop it), accent-colored "Turn on"
         while paused."""
@@ -1510,7 +1539,7 @@ class DashboardApp:
             return {"bg": DANGER_SOFT_BG, "fg": DANGER, "activebackground": "#fecaca"}
         return {"bg": ACCENT, "fg": "#ffffff", "activebackground": ACCENT_HOVER}
 
-    def _counts(self):
+    def _counts(self) -> Tuple[int, int]:
         """(total saved words, due-now count) as a single indexed query --
         used by both the Overview stat tiles and the Saved words page's
         "shown / due / total" summary line."""
@@ -1521,7 +1550,7 @@ class DashboardApp:
         ).fetchone()
         return int(row[0]), int(row[1])
 
-    def _update_stats(self):
+    def _update_stats(self) -> None:
         """Refresh the Overview page's "Saved words" / "Due today" tiles."""
         total, due = self._counts()
         self.stats_total_var.set(str(total))
@@ -1529,7 +1558,7 @@ class DashboardApp:
 
     # ------------------------------------------------------------- event loop
 
-    def _on_key_press(self, key):
+    def _on_key_press(self, key: Optional[Union[keyboard.Key, keyboard.KeyCode]]) -> None:
         """pynput's global keyboard hook callback -- runs on the listener
         thread, NOT the Tk main thread. Never touch tkinter here; every
         outcome is a small tuple pushed onto ui_queue for _poll_queue (main
@@ -1550,13 +1579,15 @@ class DashboardApp:
         elif self._key_matches(key, "save"):
             self.ui_queue.put(("save_entry",))
 
-    def _key_matches(self, key, action):
+    def _key_matches(
+        self, key: Optional[Union[keyboard.Key, keyboard.KeyCode]], action: str
+    ) -> bool:
         """Whether `key` is the currently-configured hotkey for `action`
         ("toggle"/"pin"/"save"). False if that action has no valid binding."""
         target = self.hotkeys.get(action)
         return target is not None and key == target
 
-    def _poll_queue(self):
+    def _poll_queue(self) -> None:
         """The sole consumer of ui_queue, run every 50ms via root.after --
         this is where everything the two background threads (dwell worker,
         hotkey listener) hand off actually gets applied to Tk widgets. Also
@@ -1590,7 +1621,7 @@ class DashboardApp:
         self.overlay.tick()
         self.root.after(50, self._poll_queue)
 
-    def _save_current(self):
+    def _save_current(self) -> None:
         """Handle the "save" hotkey: persist the overlay's currently pinned
         entry to study_words.db. current_entry() itself enforces "must be
         pinned first" (see OverlayWindow.current_entry in hover_translate.py),
@@ -1615,7 +1646,7 @@ class DashboardApp:
 
     # ------------------------------------------------------------------ close
 
-    def _on_close(self):
+    def _on_close(self) -> None:
         """WM_DELETE_WINDOW handler (the X button / Alt+F4) -- this is the
         one place responsible for the app's core promise that the hover
         overlay only runs while the window is open. Stops the dwell worker
@@ -1644,11 +1675,13 @@ class DashboardApp:
             ht.log.exception("study database did not close cleanly")
         self.root.destroy()
 
-    def _report_callback_exception(self, exc_type, exc_value, traceback):
+    def _report_callback_exception(
+        self, exc_type: type, exc_value: BaseException, traceback: object
+    ) -> None:
         """Keep Tk callback failures visible and diagnosable in windowed builds."""
         ht.log.error(
             "Tk callback failed",
-            exc_info=(exc_type, exc_value, traceback),
+            exc_info=(exc_type, exc_value, traceback),  # type: ignore[arg-type]
         )
         messagebox.showerror(
             "Japanese Hover Translator",
@@ -1657,7 +1690,7 @@ class DashboardApp:
             parent=self.root,
         )
 
-    def run(self):
+    def run(self) -> None:
         """Enter the Tk event loop. Blocks until the window closes (see
         _on_close), at which point the process exits since no non-daemon
         threads remain."""

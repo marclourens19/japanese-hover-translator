@@ -50,14 +50,14 @@ class ReviewResult:
     quality: int
 
 
-def utc_now():
+def utc_now() -> datetime:
     """Current time in UTC, truncated to whole seconds (matching the
     precision format_db_datetime stores, so round-tripping through the DB
     never introduces spurious sub-second differences)."""
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-def normalize_utc(value):
+def normalize_utc(value: datetime) -> datetime:
     """Coerce a datetime to UTC -- treats a naive datetime as already UTC
     (that's the only kind this module ever produces or stores) rather than
     the local timezone."""
@@ -66,12 +66,12 @@ def normalize_utc(value):
     return value.astimezone(timezone.utc)
 
 
-def format_db_datetime(value):
+def format_db_datetime(value: datetime) -> str:
     """Store UTC using SQLite's sortable ``YYYY-MM-DD HH:MM:SS`` format."""
     return normalize_utc(value).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def parse_db_datetime(value):
+def parse_db_datetime(value: Optional[str]) -> Optional[datetime]:
     """Inverse of format_db_datetime -- parse a stored string (or NULL/"",
     both of which mean "never reviewed") back into a UTC datetime."""
     if not value:
@@ -80,7 +80,7 @@ def parse_db_datetime(value):
     return normalize_utc(parsed)
 
 
-def is_due(due_at, now=None):
+def is_due(due_at: Optional[datetime], now: Optional[datetime] = None) -> bool:
     """Whether a card is due: NULL due_at (never reviewed) is always due;
     otherwise due once `now` has reached it. Mirrors the SQL WHERE clauses
     used directly in dashboard_app.py's queries -- kept here too since it's
@@ -91,7 +91,9 @@ def is_due(due_at, now=None):
     return normalize_utc(due_at) <= normalize_utc(now or utc_now())
 
 
-def schedule_review(state, rating, reviewed_at=None):
+def schedule_review(
+    state: ReviewState, rating: str, reviewed_at: Optional[datetime] = None
+) -> ReviewResult:
     """Apply one SuperMemo SM-2 review transition.
 
     Ratings map to the original 0-5 quality scale: Again=1, Hard=3,
@@ -153,7 +155,7 @@ def schedule_review(state, rating, reviewed_at=None):
     )
 
 
-def stage_label(repetitions, review_count):
+def stage_label(repetitions: int, review_count: int) -> str:
     """The Saved words page's New/Learning/Review chip: New = never
     reviewed, Learning = reviewed but hasn't strung together two
     consecutive successful ratings yet, Review = past that point (matches

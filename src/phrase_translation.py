@@ -6,11 +6,12 @@ import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
+from typing import Any, Optional, Tuple, Union
 
 import deep_translator.google as google_module
 from deep_translator import GoogleTranslator
 
-from offline_translation import normalize_source_text
+from offline_translation import OfflineJapaneseTranslator, normalize_source_text
 
 GOOGLE_TIMEOUT = (2.5, 4.5)
 GOOGLE_RETRY_BACKOFF_SECONDS = 60
@@ -31,7 +32,7 @@ _GOOGLE_REQUESTS_PATCH_LOCK = threading.Lock()
 class GooglePhraseTranslator:
     """Thread-owned Google Translate client with a persistent local cache."""
 
-    def __init__(self, cache_path):
+    def __init__(self, cache_path: Union[str, Path]) -> None:
         """Set up the Google client and a persistent SQLite cache at
         cache_path. WAL mode because this same file (TRANSLATION_CACHE_PATH
         in hover_translate.py) is also opened separately by
@@ -56,10 +57,10 @@ class GooglePhraseTranslator:
             """
         )
         self.connection.commit()
-        self.memory_cache = OrderedDict()
+        self.memory_cache: "OrderedDict[str, str]" = OrderedDict()
         self.google_unavailable_until = 0.0
 
-    def _remember(self, source_text, translated_text):
+    def _remember(self, source_text: str, translated_text: str) -> None:
         """Insert/refresh an entry in the bounded in-memory LRU cache,
         evicting the least-recently-used entry once over MEMORY_CACHE_SIZE."""
         self.memory_cache[source_text] = translated_text
@@ -67,7 +68,7 @@ class GooglePhraseTranslator:
         while len(self.memory_cache) > MEMORY_CACHE_SIZE:
             self.memory_cache.popitem(last=False)
 
-    def _cached(self, source_text):
+    def _cached(self, source_text: str) -> Tuple[Optional[str], Optional[str]]:
         """Look up source_text in memory first, then the persistent disk
         cache (promoting a disk hit back into memory). Returns
         (translation, cache_kind) or (None, None) on a full miss."""
@@ -94,7 +95,7 @@ class GooglePhraseTranslator:
         self._remember(source_text, translated)
         return translated, "google-disk"
 
-    def _store(self, source_text, translated_text):
+    def _store(self, source_text: str, translated_text: str) -> None:
         """Persist a fresh Google result to disk (upsert) and memory."""
         self.connection.execute(
             """
@@ -109,7 +110,7 @@ class GooglePhraseTranslator:
         self.connection.commit()
         self._remember(source_text, translated_text)
 
-    def _translate_google(self, source_text):
+    def _translate_google(self, source_text: str) -> Optional[str]:
         """The actual network call to Google Translate (via deep_translator,
         an unofficial web-scraping client with no built-in timeout). Patches
         in a bounded timeout for the duration of this one call -- see
@@ -117,7 +118,7 @@ class GooglePhraseTranslator:
         with _GOOGLE_REQUESTS_PATCH_LOCK:
             original_get = google_module.requests.get
 
-            def bounded_get(*args, **kwargs):
+            def bounded_get(*args: Any, **kwargs: Any) -> Any:
                 """requests.get with a default timeout, deferring to any
                 explicit timeout the caller (deep_translator) already set."""
                 kwargs.setdefault("timeout", GOOGLE_TIMEOUT)
@@ -129,7 +130,9 @@ class GooglePhraseTranslator:
             finally:
                 google_module.requests.get = original_get
 
-    def translate(self, text, offline_translator):
+    def translate(
+        self, text: str, offline_translator: OfflineJapaneseTranslator
+    ) -> Tuple[str, str, float]:
         """Translate text via Google (cached), or the given offline
         translator if Google isn't due to be retried yet or the request
         fails. Every Google failure moves google_unavailable_until forward
@@ -141,6 +144,7 @@ class GooglePhraseTranslator:
         source_text = normalize_source_text(text)
         cached, cache_kind = self._cached(source_text)
         if cached is not None:
+            assert cache_kind is not None  # _cached always pairs these two
             return cached, cache_kind, 0.0
 
         if time.monotonic() >= self.google_unavailable_until:
@@ -163,7 +167,7 @@ class GooglePhraseTranslator:
         translated, cache_kind, elapsed_ms = offline_translator.translate(source_text)
         return translated, f"offline-fallback-{cache_kind}", elapsed_ms
 
-    def close(self):
+    def close(self) -> None:
         """Close the cache DB connection; failures are swallowed since this
         runs during best-effort shutdown."""
         try:

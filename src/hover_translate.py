@@ -86,8 +86,9 @@ import sqlite3
 import sys
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import fugashi
 import mss
@@ -110,8 +111,13 @@ from offline_translation import OfflineJapaneseTranslator, TranslationSetupError
 from phrase_translation import GooglePhraseTranslator
 from spaced_repetition import format_db_datetime, utc_now
 
+# (surface, reading-or-None) -- one rendered token of furigana-annotated text.
+FuriganaToken = Tuple[str, Optional[str]]
+# (surface, reading, lemma, lemma_reading) for one inflected content word.
+DictFormTuple = Tuple[str, str, str, str]
 
-def _enable_windows_dpi_awareness():
+
+def _enable_windows_dpi_awareness() -> None:
     """Keep cursor coordinates and MSS capture pixels in the same coordinate space.
 
     Without this on a scaled display (for example 125%), GetCursorPos returns
@@ -310,7 +316,7 @@ OCR_BACKEND_ENV = "JAPANESE_HOVER_OCR_BACKEND"
 DEFAULT_HOTKEYS = {"toggle": "f9", "pin": "f10", "save": "f11"}
 
 
-def app_data_directory():
+def app_data_directory() -> str:
     """Return a user-writable data directory for source and packaged runs."""
     if getattr(sys, "frozen", False):
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
@@ -338,7 +344,7 @@ class OcrSetupError(RuntimeError):
     """Raised when neither Japanese OCR backend is usable."""
 
 
-def _find_tesseract_command():
+def _find_tesseract_command() -> Optional[str]:
     """Return a portable Tesseract executable path, or None."""
     candidates = [os.environ.get("TESSERACT_CMD"), shutil.which("tesseract")]
     for env_name in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
@@ -355,7 +361,7 @@ def _find_tesseract_command():
     return None
 
 
-def _find_tessdata_prefix(tesseract_command):
+def _find_tessdata_prefix(tesseract_command: str) -> Optional[str]:
     """Find Japanese trained data without embedding a machine-specific path."""
     configured = os.environ.get("TESSDATA_PREFIX")
     candidates = [
@@ -373,7 +379,7 @@ def _find_tessdata_prefix(tesseract_command):
     return None
 
 
-def _configure_tesseract():
+def _configure_tesseract() -> bool:
     """Try to make Tesseract usable: locate the executable and its jpn
     tessdata, point pytesseract at them, and probe that "jpn" is actually
     among the languages it reports. Returns True/False rather than raising --
@@ -393,7 +399,7 @@ def _configure_tesseract():
         return False
 
 
-def _windows_ocr_available():
+def _windows_ocr_available() -> bool:
     """Probe whether Windows' built-in OCR has the Japanese language pack
     installed (Settings > Time & language > Language & region), without
     actually running any recognition. Returns False (rather than raising) on
@@ -415,7 +421,7 @@ def _windows_ocr_available():
         return False
 
 
-def choose_ocr_backend():
+def choose_ocr_backend() -> str:
     """Pick "tesseract" or "windows" for HoverTranslator.ocr_backend.
 
     Honors JAPANESE_HOVER_OCR_BACKEND if set (raising OcrSetupError if the
@@ -456,7 +462,7 @@ def choose_ocr_backend():
 user32 = ctypes.windll.user32
 
 
-def get_cursor_pos():
+def get_cursor_pos() -> Tuple[int, int]:
     """Physical-pixel cursor position via the Win32 API, in the same
     virtual-desktop coordinate space as get_virtual_screen_bounds() and mss
     screen captures. Requires per-monitor DPI awareness to already be set
@@ -473,7 +479,7 @@ SM_CXVIRTUALSCREEN = 78
 SM_CYVIRTUALSCREEN = 79
 
 
-def get_virtual_screen_bounds():
+def get_virtual_screen_bounds() -> Tuple[int, int, int, int]:
     """Bounding box of the full virtual desktop across all monitors, as
     (left, top, width, height). A secondary monitor positioned left of or
     above the primary one has a negative left/top -- GetCursorPos and mss
@@ -497,7 +503,7 @@ user32.GetAncestor.restype = ctypes.wintypes.HWND
 user32.GetForegroundWindow.restype = ctypes.wintypes.HWND
 
 
-def get_window_class_name(hwnd):
+def get_window_class_name(hwnd: int) -> str:
     """Win32 window class name for a window handle, used to recognize known
     terminal/console windows (see CONSOLE_WINDOW_CLASSES) where sending Ctrl+C
     would send SIGINT instead of copying."""
@@ -506,7 +512,7 @@ def get_window_class_name(hwnd):
     return buf.value
 
 
-def cursor_is_over_focused_window(x, y):
+def cursor_is_over_focused_window(x: int, y: int) -> bool:
     """True if the top-level window under (x, y) is also the keyboard-focused
     one -- Ctrl+C goes to whichever window has focus, so the selection-copy
     trick is only meaningful (and only attempted) when that matches where
@@ -519,7 +525,7 @@ def cursor_is_over_focused_window(x, y):
     return bool(root_at_point) and root_at_point == foreground
 
 
-def focused_window_is_console():
+def focused_window_is_console() -> bool:
     """True if Ctrl+C would send SIGINT instead of copying (see the
     'Known limitations' note at the top of this file)."""
     foreground = user32.GetForegroundWindow()
@@ -528,7 +534,7 @@ def focused_window_is_console():
     return get_window_class_name(foreground) in CONSOLE_WINDOW_CLASSES
 
 
-def _clipboard_paste_with_retry():
+def _clipboard_paste_with_retry() -> Optional[str]:
     """pyperclip.paste(), retrying past transient Windows clipboard-lock
     failures. Returns None (distinct from a legitimately empty clipboard,
     which returns "") only once every attempt has failed."""
@@ -542,7 +548,7 @@ def _clipboard_paste_with_retry():
     return None
 
 
-def _clipboard_copy_with_retry(text):
+def _clipboard_copy_with_retry(text: str) -> bool:
     """pyperclip.copy(), retrying past transient Windows clipboard-lock
     failures. Returns True on success, False if every attempt failed."""
     for attempt in range(CLIPBOARD_RETRY_ATTEMPTS):
@@ -556,7 +562,7 @@ def _clipboard_copy_with_retry(text):
     return False
 
 
-def get_selected_text(kb_controller, x, y):
+def get_selected_text(kb_controller: "keyboard.Controller", x: int, y: int) -> Optional[str]:
     """Read the current text selection via the Ctrl+C/clipboard trick, or
     return None if there's no selection (or it isn't safe to try). The
     original clipboard contents are restored afterward whenever they could
@@ -611,7 +617,7 @@ def get_selected_text(kb_controller, x, y):
     return copied.strip()
 
 
-def is_repetitive_garbage(line):
+def is_repetitive_garbage(line: str) -> bool:
     """True if `line` is long enough to judge and has too few distinct
     characters relative to its length -- catches OCR hallucinations like a
     repeated katakana glyph (e.g. "ニーニーニー...") that individually match
@@ -621,7 +627,9 @@ def is_repetitive_garbage(line):
     return len(set(line)) / len(line) < OCR_MIN_UNIQUE_CHAR_RATIO
 
 
-def ocr_box_near_capture_cursor(left, top, width, height, scale=1):
+def ocr_box_near_capture_cursor(
+    left: float, top: float, width: float, height: float, scale: float = 1
+) -> bool:
     """Whether an OCR word box is plausibly the text under the pointer."""
     cursor_x = CAPTURE_WIDTH_PX * scale / 2
     cursor_y = CAPTURE_OFFSET_Y_PX * scale
@@ -633,12 +641,12 @@ def ocr_box_near_capture_cursor(left, top, width, height, scale=1):
     )
 
 
-def clean_japanese_line(line):
+def clean_japanese_line(line: Optional[str]) -> str:
     """Drop stray Latin/UI text and whitespace from an OCR line."""
     return NON_JAPANESE_RE.sub("", line or "")
 
 
-def filter_tesseract_data(data):
+def filter_tesseract_data(data: Dict[str, Any]) -> str:
     """Convert pytesseract word data into cursor-anchored, trusted lines.
 
     Kept as a pure function so the false-popup failure modes can be tested
@@ -660,7 +668,7 @@ def filter_tesseract_data(data):
     # that's empty or below the per-word confidence floor as we go. Each kept
     # word also records whether its own bounding box is near the capture's
     # cursor point, since that's decided per-word, not per-line.
-    line_words = {}
+    line_words: Dict[Tuple[Any, Any, Any], List[Dict[str, Any]]] = {}
     for word, conf, block, par, line_num, left, top, width, height in zip(
         *(data[name] for name in required)
     ):
@@ -719,7 +727,7 @@ def filter_tesseract_data(data):
     return "\n".join(lines)
 
 
-def filter_windows_ocr_lines(raw_lines):
+def filter_windows_ocr_lines(raw_lines: Sequence[str]) -> str:
     """Apply the backend-independent Japanese/noise checks to Windows OCR."""
     lines = [clean_japanese_line(line) for line in raw_lines]
     return "\n".join(
@@ -739,7 +747,7 @@ INFLECTING_POS = {"動詞", "形容詞", "形容動詞"}
 NON_LEXICAL_POS = {"助詞", "助動詞", "補助記号", "空白", "記号"}
 
 
-def kata_to_hira(text):
+def kata_to_hira(text: str) -> str:
     """Katakana -> hiragana. UniDic readings are katakana; this file's
     furigana convention (and beginners' first-learned script) is hiragana."""
     return "".join(
@@ -747,7 +755,7 @@ def kata_to_hira(text):
     )
 
 
-def truncate_for_analysis(text):
+def truncate_for_analysis(text: str) -> str:
     """Cap text at MAX_TEXT_LENGTH before furigana/dictionary-form analysis
     and translation -- an accidentally-selected whole paragraph is slow to
     process and not useful for a word/phrase lookup tool, so it's cut short
@@ -762,7 +770,15 @@ class TranslationJob:
     thread, sent as soon as OCR finishes so the popup appears without waiting
     on the separate offline translation worker."""
 
-    def __init__(self, job_id, x, y, furigana_lines, dict_forms, raw_text):
+    def __init__(
+        self,
+        job_id: int,
+        x: int,
+        y: int,
+        furigana_lines: List[List[FuriganaToken]],
+        dict_forms: List[DictFormTuple],
+        raw_text: str,
+    ) -> None:
         """Store one hover's OCR/selection results for the popup to render
         immediately; job_id lets a later ("translation_ready", job_id, text)
         message find its way back to the right popup even if the cursor has
@@ -799,7 +815,7 @@ class HoverTranslator:
     to the UI, consumed on the Tk main thread (see DashboardApp._poll_queue).
     """
 
-    def __init__(self, ui_queue: queue.Queue):
+    def __init__(self, ui_queue: "queue.Queue[Any]") -> None:
         """Pick an OCR backend, start the translation worker thread, and
         block (up to TRANSLATION_MODEL_LOAD_TIMEOUT_SECONDS) until it's
         confirmed ready. Raises OcrSetupError (from choose_ocr_backend) or
@@ -830,7 +846,7 @@ class HoverTranslator:
         self._kb_controller = keyboard.Controller()  # simulates Ctrl+C for selection reads
 
         # --- Dwell cooldown tracking (see in_cooldown) ---
-        self._last_trigger_pos = None  # (x, y) of the last successful trigger
+        self._last_trigger_pos: Optional[Tuple[int, int]] = None  # (x, y) of the last trigger
         self._last_trigger_time = 0.0
         # True once the cursor has moved more than HIDE_MOVE_DISTANCE_PX away
         # from _last_trigger_pos -- the same distance OverlayWindow uses to
@@ -847,15 +863,15 @@ class HoverTranslator:
         # arrives late (after the cursor moved on) be recognized as stale and
         # discarded instead of popping up over whatever's showing now.
         self._job_counter = 0
-        self._latest_translation_job_id = None
-        self._translation_queue = queue.Queue(maxsize=1)
+        self._latest_translation_job_id: Optional[int] = None
+        self._translation_queue: "queue.Queue[Any]" = queue.Queue(maxsize=1)
 
         # --- Start the translation worker thread and wait for it to finish
         # loading (JMdict + offline model + Google client) before returning,
         # so the caller never gets a HoverTranslator that isn't actually ready
         # to translate yet. ---
         self._translation_init_event = threading.Event()
-        self._translation_init_error = None
+        self._translation_init_error: Optional[BaseException] = None
         self._translation_thread = threading.Thread(
             target=self._translation_loop,
             name="offline-translation-worker",
@@ -886,7 +902,7 @@ class HoverTranslator:
         log.info("translation backend: %s", self.translation_backend_display)
 
     @property
-    def translation_backend_display(self):
+    def translation_backend_display(self) -> str:
         """Live summary of which translation engines are actually active
         right now, e.g. "JMdict words · Google phrases · offline fallback"
         when all three are up, or "JMdict unavailable · Google phrases ·
@@ -903,13 +919,13 @@ class HoverTranslator:
         return f"{dictionary_part} · {phrase_part} · offline fallback"
 
     @staticmethod
-    def clean_japanese_line(line):
+    def clean_japanese_line(line: Optional[str]) -> str:
         """Drop non-Japanese characters (stray Latin/UI text, spacing artifacts)."""
         return clean_japanese_line(line)
 
-    def furigana_line(self, line):
+    def furigana_line(self, line: str) -> List[FuriganaToken]:
         """Split a line into (surface, reading_or_None) tokens for ruby text."""
-        tokens = []
+        tokens: List[FuriganaToken] = []
         for word in self._tagger(line):
             surface = word.surface
             kana = word.feature.kana
@@ -921,12 +937,12 @@ class HoverTranslator:
             tokens.append((surface, reading))
         return tokens
 
-    def dictionary_forms(self, text):
+    def dictionary_forms(self, text: str) -> List[DictFormTuple]:
         """Inflected content words in text, as (surface, reading, lemma,
         lemma_reading) -- the surface form actually on screen next to the
         dictionary form you'd look it up under, for words where they differ."""
-        seen = set()
-        forms = []
+        seen: set = set()
+        forms: List[DictFormTuple] = []
         for word in self._tagger(text):
             feat = word.feature
             if feat.pos1 not in INFLECTING_POS:
@@ -940,7 +956,7 @@ class HoverTranslator:
             forms.append((word.surface, reading, lemma, lemma_reading))
         return forms
 
-    def dictionary_candidates(self, text):
+    def dictionary_candidates(self, text: str) -> List[str]:
         """Exact/lemma forms worth trying as a single JMdict entry.
 
         The exact string is tried first so compounds such as 日本語 work even
@@ -972,7 +988,7 @@ class HoverTranslator:
             candidates.append(word.surface)
         return list(dict.fromkeys(candidates))
 
-    def capture_region(self, cx, cy):
+    def capture_region(self, cx: int, cy: int) -> Any:
         """Grab a CAPTURE_WIDTH_PX x CAPTURE_HEIGHT_PX screenshot centered
         (horizontally) around (cx, cy), clamped to the virtual desktop.
         Called from the dwell worker thread, never Tk's -- mss.grab() is
@@ -996,7 +1012,7 @@ class HoverTranslator:
         shot = self._sct.grab(region)
         return shot
 
-    def ocr(self, shot):
+    def ocr(self, shot: Any) -> str:
         """Recognize Japanese text in an mss screenshot using whichever
         backend choose_ocr_backend picked at startup. Returns newline-joined
         text (already filtered for the Japanese/noise/cursor-proximity
@@ -1005,7 +1021,7 @@ class HoverTranslator:
             return self._ocr_windows(shot)
         return self._ocr_tesseract(shot)
 
-    def _ocr_tesseract(self, shot):
+    def _ocr_tesseract(self, shot: Any) -> str:
         """Upscale + autocontrast the capture, run Tesseract with per-word
         confidence data, and filter to Japanese words near the cursor (see
         filter_tesseract_data / ocr_box_near_capture_cursor)."""
@@ -1022,7 +1038,7 @@ class HoverTranslator:
         img = img.convert("L")
         img = img.resize(
             (img.width * OCR_UPSCALE_FACTOR, img.height * OCR_UPSCALE_FACTOR),
-            PIL.Image.LANCZOS,
+            PIL.Image.LANCZOS,  # type: ignore[attr-defined]
         )
         img = PIL.ImageOps.autocontrast(img, cutoff=1)
         # oem 3 (default, legacy+LSTM combined) tested more reliably than
@@ -1037,7 +1053,7 @@ class HoverTranslator:
 
         return filter_tesseract_data(data)
 
-    async def _ocr_windows_async(self, shot):
+    async def _ocr_windows_async(self, shot: Any) -> List[str]:
         """Run the capture through Windows' built-in OCR (Windows.Media.Ocr
         via the winrt projection) and return only the lines whose word boxes
         are anchored near the capture's cursor point -- unrelated nearby
@@ -1078,7 +1094,7 @@ class HoverTranslator:
                 anchored_lines.append(line.text)
         return anchored_lines
 
-    def _ocr_windows(self, shot):
+    def _ocr_windows(self, shot: Any) -> str:
         """Sync wrapper around _ocr_windows_async, applying the same
         Japanese/noise filter Tesseract's path uses (filter_windows_ocr_lines)
         so both backends' output gets consistent treatment downstream."""
@@ -1088,7 +1104,7 @@ class HoverTranslator:
         raw_lines = asyncio.run(self._ocr_windows_async(shot))
         return filter_windows_ocr_lines(raw_lines)
 
-    def _translation_loop(self):
+    def _translation_loop(self) -> None:
         """The dedicated translation-worker thread's target function: loads
         JMdict/offline model/Google client once, then services jobs from
         _translation_queue one at a time until a None sentinel arrives (see
@@ -1202,6 +1218,7 @@ class HoverTranslator:
                     #   3. the offline model directly, if Google's translator
                     #      never initialized at all. ---
                     if dictionary_match is not None:
+                        assert dictionary is not None  # only set when dictionary succeeded above
                         translated = dictionary.format_match(dictionary_match)
                         cache_kind = "jmdict"
                         model_ms = (time.perf_counter() - lookup_started) * 1000
@@ -1262,7 +1279,9 @@ class HoverTranslator:
             if offline_translator is not None:
                 offline_translator.close()
 
-    def _queue_translation(self, job_id, source_text, dictionary_candidates):
+    def _queue_translation(
+        self, job_id: int, source_text: str, dictionary_candidates: List[str]
+    ) -> None:
         """Hand a job to the translation worker thread, called from
         handle_dwell right after OCR/selection succeeds."""
         self._latest_translation_job_id = job_id
@@ -1277,7 +1296,7 @@ class HoverTranslator:
             (job_id, source_text, dictionary_candidates)
         )
 
-    def in_cooldown(self, x, y):
+    def in_cooldown(self, x: int, y: int) -> bool:
         """True if (x, y) is within COOLDOWN_RADIUS_PX of the last trigger
         point and within COOLDOWN_SECONDS of it -- used by handle_dwell to
         avoid re-running OCR/translate on a spot the user is still reading.
@@ -1296,7 +1315,7 @@ class HoverTranslator:
             and (time.monotonic() - self._last_trigger_time) <= COOLDOWN_SECONDS
         )
 
-    def handle_dwell(self, x, y):
+    def handle_dwell(self, x: int, y: int) -> None:
         """Called by dwell_watch_loop once the cursor has held still long
         enough: try a selection read first (get_selected_text), fall back to
         capture_region + ocr, then analyze the result (furigana, dictionary
@@ -1380,10 +1399,10 @@ class HoverTranslator:
             stage_label, (t3 - t2) * 1000, (t3 - t0) * 1000,
         )
 
-    def dwell_watch_loop(self):
+    def dwell_watch_loop(self) -> None:
         """Background thread: polls cursor position and detects dwell."""
-        still_since = None
-        still_pos = None
+        still_since: Optional[float] = None
+        still_pos: Optional[Tuple[int, int]] = None
         triggered_for_still = False
 
         while self.running:
@@ -1440,6 +1459,7 @@ class HoverTranslator:
                 self.ui_queue.put(("cursor_moved", x, y))
                 continue
 
+            assert still_since is not None  # always set alongside still_pos above
             if (
                 not triggered_for_still
                 and time.monotonic() - still_since >= DWELL_TIME_SECONDS
@@ -1464,7 +1484,7 @@ class HoverTranslator:
                     still_since = now
                     triggered_for_still = False
 
-    def toggle(self):
+    def toggle(self) -> None:
         """Flip enabled on/off (the toggle hotkey's handler in the headless
         launcher; DashboardApp implements its own equivalent for the UI)."""
         self.enabled = not self.enabled
@@ -1474,7 +1494,7 @@ class HoverTranslator:
             self._latest_translation_job_id = None
             self.ui_queue.put(("force_hide",))
 
-    def stop(self):
+    def stop(self) -> None:
         """Signal the translation worker to exit (via a None sentinel on
         _translation_queue), best-effort join it, and close the screen
         capture resource. Does not stop dwell_watch_loop itself (that thread
@@ -1520,7 +1540,7 @@ class HoverTranslator:
         log.info("HoverTranslator.stop() finished in %.0fms", (time.monotonic() - started) * 1000)
 
 
-def init_study_db(path=STUDY_DB_PATH, now=None):
+def init_study_db(path: str = STUDY_DB_PATH, now: Optional[datetime] = None) -> None:
     """Create or migrate the study database without losing saved cards."""
     conn = sqlite3.connect(path)
     try:
@@ -1593,7 +1613,7 @@ def init_study_db(path=STUDY_DB_PATH, now=None):
         conn.close()
 
 
-def format_dict_forms(dict_forms):
+def format_dict_forms(dict_forms: Sequence[DictFormTuple]) -> str:
     """Render dictionary_forms()-style tuples as one display/storage string,
     e.g. "食べた(たべた)→食べる(たべる)" -- used both by the overlay popup
     and when persisting a saved word to the study database."""
@@ -1606,7 +1626,7 @@ def format_dict_forms(dict_forms):
 # --- Hotkey config (JSON-backed, user-editable) -----------------------------
 
 
-def key_to_str(key):
+def key_to_str(key: Optional[Union[keyboard.Key, keyboard.KeyCode]]) -> Optional[str]:
     """Serialize a pynput key to a stable string for config storage.
 
     keyboard.Key.f9 -> "f9"; a letter KeyCode -> its char; anything else that
@@ -1621,7 +1641,7 @@ def key_to_str(key):
     return None
 
 
-def str_to_key(s):
+def str_to_key(s: Optional[str]) -> Optional[Union[keyboard.Key, keyboard.KeyCode]]:
     """Parse a config string back into a pynput key object, or None."""
     if not s:
         return None
@@ -1634,16 +1654,16 @@ def str_to_key(s):
     return None
 
 
-def key_display(s):
+def key_display(s: Optional[str]) -> str:
     """Human-friendly label for a hotkey config string ('f9' -> 'F9')."""
     if not s:
         return "(unset)"
     return s.upper()
 
 
-def load_config():
+def load_config() -> Dict[str, Any]:
     """Load config.json, falling back to defaults for anything missing."""
-    cfg = {"hotkeys": dict(DEFAULT_HOTKEYS)}
+    cfg: Dict[str, Any] = {"hotkeys": dict(DEFAULT_HOTKEYS)}
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -1659,7 +1679,7 @@ def load_config():
     return cfg
 
 
-def save_config(cfg):
+def save_config(cfg: Dict[str, Any]) -> bool:
     """Write config.json atomically: write-and-fsync a .tmp file, then
     os.replace() it over the real path. A crash or power loss mid-write
     leaves the previous config intact rather than a half-written/corrupt
@@ -1694,7 +1714,7 @@ class OverlayWindow:
     and dispatched here on the main thread -- touching these widgets from
     another thread produces corrupted/blank renders (learned the hard way)."""
 
-    def __init__(self, root):
+    def __init__(self, root: Any) -> None:
         """Build the (initially hidden) popup Toplevel and its fonts/canvas.
         Actual content is drawn later by _render, called from show()/
         update_translation()/toggle_pin() once real data is available."""
@@ -1734,21 +1754,21 @@ class OverlayWindow:
         self.pin_label = key_display(DEFAULT_HOTKEYS["pin"])
         self.save_label = key_display(DEFAULT_HOTKEYS["save"])
 
-        self.state = {
+        self.state: Dict[str, Any] = {
             "visible": False, "anchor": None, "hide_at": None, "pinned": False,
             "current_job_id": None, "current_furigana": None,
             "current_dict_forms": None, "current_xy": None,
             "current_raw_text": None, "current_translation": None,
         }
 
-    def set_hotkey_labels(self, pin_label, save_label):
+    def set_hotkey_labels(self, pin_label: str, save_label: str) -> None:
         """Update the "F10 save / F9 unpin"-style labels shown in the pinned
         banner -- called by the owning app whenever the user rebinds a
         hotkey, so the popup never shows a stale key."""
         self.pin_label = pin_label
         self.save_label = save_label
 
-    def _draw_furigana_lines(self, furigana_lines, y):
+    def _draw_furigana_lines(self, furigana_lines: List[List[FuriganaToken]], y: float) -> float:
         """Draw ruby-annotated Japanese text starting at (padding, y); wraps to
         a new row at OVERLAY_MAX_WIDTH_PX so long text doesn't run off the edge
         of the popup. Returns the y position after the last row."""
@@ -1776,7 +1796,14 @@ class OverlayWindow:
             y += row_h
         return y
 
-    def _render(self, furigana_lines, dict_forms, translation_text, x, y):
+    def _render(
+        self,
+        furigana_lines: List[List[FuriganaToken]],
+        dict_forms: List[DictFormTuple],
+        translation_text: str,
+        x: int,
+        y: int,
+    ) -> None:
         """Redraw the whole popup from scratch onto the canvas (pin banner
         if pinned, furigana text, translation, dictionary forms if any),
         resize the window to fit, and position it near (x, y) -- flipping to
@@ -1786,7 +1813,7 @@ class OverlayWindow:
         canvas.delete("all") + redraw is simple and fast enough at this size."""
         canvas = self.canvas
         canvas.delete("all")  # full redraw every time -- see docstring for why
-        cy = OVERLAY_PADDING_PX  # running "next free y" cursor, grows as each section is drawn
+        cy: float = OVERLAY_PADDING_PX  # running "next free y" cursor, grows per section
 
         # --- Section 1: pinned banner (only when pinned) ---
         if self.state["pinned"]:
@@ -1890,7 +1917,7 @@ class OverlayWindow:
         self.state["anchor"] = (x, y)
         self.state["hide_at"] = time.monotonic() + OVERLAY_AUTO_HIDE_SECONDS
 
-    def show(self, job):
+    def show(self, job: TranslationJob) -> None:
         """Display a TranslationJob's OCR/selection result immediately (with
         a "Translating…" placeholder in place of the real translation, which
         arrives later and separately -- see update_translation)."""
@@ -1902,7 +1929,7 @@ class OverlayWindow:
         self.state["current_translation"] = TRANSLATING_PLACEHOLDER
         self._render(job.furigana_lines, job.dict_forms, TRANSLATING_PLACEHOLDER, job.x, job.y)
 
-    def update_translation(self, job_id, translated_text):
+    def update_translation(self, job_id: int, translated_text: str) -> None:
         """Fill in the real translation once it arrives. Ignored if the
         popup has since moved on to a different word (job_id mismatch) or
         been hidden -- a slow translation for an abandoned hover must not
@@ -1915,7 +1942,7 @@ class OverlayWindow:
             translated_text, *self.state["current_xy"],
         )
 
-    def hide(self):
+    def hide(self) -> None:
         """Withdraw the popup and clear visible/anchor/hide_at/pinned state.
         Also clears pinned -- hiding always fully resets, there's no
         "hidden but still pinned" state."""
@@ -1926,7 +1953,7 @@ class OverlayWindow:
             self.state["hide_at"] = None
             self.state["pinned"] = False
 
-    def toggle_pin(self):
+    def toggle_pin(self) -> Optional[bool]:
         """Flip the pinned state; returns the new state, or None if nothing is
         showing to pin."""
         if not self.state["visible"]:
@@ -1938,7 +1965,7 @@ class OverlayWindow:
         )
         return self.state["pinned"]
 
-    def handle_cursor_moved(self, x, y):
+    def handle_cursor_moved(self, x: int, y: int) -> None:
         """Auto-hide the popup once the cursor has moved more than
         HIDE_MOVE_DISTANCE_PX from where it was triggered -- unless pinned,
         which suppresses this so the user can move the mouse away to read
@@ -1950,7 +1977,7 @@ class OverlayWindow:
             if (dx * dx + dy * dy) ** 0.5 > HIDE_MOVE_DISTANCE_PX:
                 self.hide()
 
-    def tick(self):
+    def tick(self) -> None:
         """Called periodically on the main thread to enforce auto-hide."""
         if (
             self.state["visible"]
@@ -1960,7 +1987,7 @@ class OverlayWindow:
         ):
             self.hide()
 
-    def current_entry(self):
+    def current_entry(self) -> Optional[Dict[str, Any]]:
         """The word/phrase currently shown, as a dict ready for saving -- or
         None unless the popup is both visible and pinned (a deliberate save)."""
         if not self.state["visible"] or not self.state["pinned"]:
@@ -1972,7 +1999,7 @@ class OverlayWindow:
         }
 
 
-def save_entry_to_db(entry):
+def save_entry_to_db(entry: Dict[str, Any]) -> None:
     """Insert a popup entry (as returned by OverlayWindow.current_entry) into
     the study database. Shared by the standalone launcher and the dashboard."""
     conn = sqlite3.connect(STUDY_DB_PATH)
@@ -1992,7 +2019,7 @@ def save_entry_to_db(entry):
         conn.close()
 
 
-def main():
+def main() -> None:
     """Headless overlay-only launcher (no dashboard window). This is the legacy
     entry point; dashboard_app.py is the primary way to run the tool. Quit by
     pressing Ctrl+C in the console."""
@@ -2013,7 +2040,7 @@ def main():
         key_display(config["hotkeys"]["pin"]), key_display(config["hotkeys"]["save"])
     )
 
-    def save_current_entry():
+    def save_current_entry() -> None:
         """Save hotkey handler -- mirrors DashboardApp._save_current."""
         entry = overlay.current_entry()
         if entry is None:
@@ -2025,7 +2052,7 @@ def main():
         except Exception as exc:
             log.warning("failed to save entry: %s", exc)
 
-    def poll_queue():
+    def poll_queue() -> None:
         """ui_queue consumer, run on a timer -- mirrors
         DashboardApp._poll_queue (there's no dashboard here, so no
         toggle_enabled/hotkey-recording cases to handle)."""
@@ -2049,7 +2076,7 @@ def main():
         overlay.tick()
         root.after(50, poll_queue)
 
-    def on_key_press(key):
+    def on_key_press(key: Optional[Union[keyboard.Key, keyboard.KeyCode]]) -> None:
         # Runs on pynput's listener thread -- never touch tkinter here. Route
         # through ui_queue; poll_queue (main thread) does the real work.
         if hotkeys["toggle"] is not None and key == hotkeys["toggle"]:

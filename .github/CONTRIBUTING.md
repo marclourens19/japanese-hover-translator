@@ -27,6 +27,13 @@ in `pyproject.toml`), enforced in CI alongside the tests:
 python -m ruff check .
 ```
 
+New code should be type-hinted; check with [mypy](https://mypy-lang.org/) (same config file,
+also enforced in CI):
+
+```powershell
+python -m mypy
+```
+
 ## Where things live
 
 The module docstrings and class/method docstrings throughout the codebase are

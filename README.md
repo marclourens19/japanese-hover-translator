@@ -220,6 +220,13 @@ configured in [`pyproject.toml`](pyproject.toml) and enforced in CI alongside th
 python -m ruff check .
 ```
 
+Every function in `src/` is type-hinted and checked with [mypy](https://mypy-lang.org/),
+also configured in `pyproject.toml` and enforced in CI:
+
+```powershell
+python -m mypy
+```
+
 ## Engineering notes
 
 [`docs/engineering-notes.md`](docs/engineering-notes.md) has write-ups of bugs worth

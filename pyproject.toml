@@ -14,3 +14,18 @@ select = ["E", "W", "F", "I"]
 # (its __init__ raises immediately -- see the class docstring) and imports
 # names its dead body still refers to.
 "src/study_app.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+files = ["src"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+# These libraries have no type stubs and no py.typed marker on PyPI --
+# pyperclip and pynput are checked for real via the types-pyperclip/
+# types-pynput packages in requirements-dev.txt; mss, sentencepiece, and
+# winrt.* all ship their own py.typed marker and need no override at all.
+[[tool.mypy.overrides]]
+module = ["ctranslate2", "deep_translator", "deep_translator.google", "fugashi", "pytesseract"]
+ignore_missing_imports = true

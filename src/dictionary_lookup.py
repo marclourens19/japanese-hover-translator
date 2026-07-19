@@ -4,6 +4,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from offline_translation import resource_root
 
@@ -58,7 +59,7 @@ class DictionaryEntry:
     headword: str
     reading: str
     common: bool
-    senses: list
+    senses: List[Dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -67,11 +68,11 @@ class DictionaryMatch:
     matched, and every entry found for it (see MAX_ENTRIES)."""
 
     query: str
-    entries: list
+    entries: List[DictionaryEntry]
     dictionary_date: str
 
 
-def bundled_dictionary_path():
+def bundled_dictionary_path() -> Path:
     """Where the JMdict SQLite file lives -- next to the source checkout, or
     inside a PyInstaller bundle's extracted data (see
     offline_translation.resource_root)."""
@@ -81,7 +82,7 @@ def bundled_dictionary_path():
 class LocalJapaneseDictionary:
     """Thread-owned exact-form JMdict lookup with compact display formatting."""
 
-    def __init__(self, database_path=None):
+    def __init__(self, database_path: Optional[Union[str, Path]] = None) -> None:
         """Open the bundled JMdict database read-only (mode=ro&immutable=1 --
         this file never changes at runtime, so SQLite can skip locking
         overhead) and validate its schema version. Raises
@@ -108,7 +109,7 @@ class LocalJapaneseDictionary:
                 f"The bundled JMdict database could not be opened: {exc}"
             ) from exc
 
-    def lookup(self, candidates):
+    def lookup(self, candidates: Sequence[str]) -> Optional[DictionaryMatch]:
         """Try each candidate string (in order -- see
         HoverTranslator.dictionary_candidates for how they're built: exact
         text first, then lemma, then surface form) against the forms table
@@ -145,7 +146,7 @@ class LocalJapaneseDictionary:
                 return DictionaryMatch(candidate, entries, self.dictionary_date)
         return None
 
-    def _part_of_speech(self, sense):
+    def _part_of_speech(self, sense: Dict[str, Any]) -> str:
         """Human-readable part-of-speech label(s) for one sense, e.g.
         "noun · transitive" -- codes are mapped through POS_LABELS first,
         then the dictionary's own bundled tag glossary as a fallback for any
@@ -158,14 +159,14 @@ class LocalJapaneseDictionary:
         return " · ".join(labels[:3])
 
     @staticmethod
-    def _definition(sense):
+    def _definition(sense: Dict[str, Any]) -> str:
         """Semicolon-joined glosses for one sense, capped at
         MAX_GLOSSES_PER_SENSE so a sense with many near-duplicate glosses
         doesn't dominate the popup."""
         glosses = sense.get("g", [])[:MAX_GLOSSES_PER_SENSE]
         return "; ".join(glosses)
 
-    def format_match(self, match):
+    def format_match(self, match: DictionaryMatch) -> str:
         """Render a DictionaryMatch as the multi-line display string shown
         in the hover popup / saved-word detail panel: headword(+reading),
         part of speech, then numbered senses -- multiple entries (e.g. two
@@ -205,7 +206,7 @@ class LocalJapaneseDictionary:
                 lines.append("")
         return "\n".join(lines).strip()
 
-    def close(self):
+    def close(self) -> None:
         """Close the SQLite connection; failures are swallowed since this is
         always called during best-effort shutdown/error-recovery paths."""
         try:

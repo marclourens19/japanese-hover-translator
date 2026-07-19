@@ -14,6 +14,7 @@ import time
 import unicodedata
 from collections import OrderedDict
 from pathlib import Path
+from typing import Optional, Tuple, Union
 
 import ctranslate2
 import sentencepiece as spm
@@ -34,7 +35,7 @@ class TranslationSetupError(RuntimeError):
     """Raised when the bundled translation engine cannot be loaded."""
 
 
-def resource_root():
+def resource_root() -> Path:
     """Source checkout root, or PyInstaller's extracted data root.
 
     This file lives in src/, one level below the project root -- .parent.parent
@@ -47,14 +48,14 @@ def resource_root():
     return Path(__file__).resolve().parent.parent
 
 
-def bundled_model_path():
+def bundled_model_path() -> Path:
     """Where the quantized OPUS-MT model directory lives, relative to
     resource_root() -- same source-vs-packaged-build distinction as
     dictionary_lookup.bundled_dictionary_path."""
     return resource_root() / "models" / MODEL_DIRECTORY_NAME
 
 
-def normalize_source_text(text):
+def normalize_source_text(text: str) -> str:
     """NFKC-normalize (e.g. full-width -> half-width forms) and collapse
     whitespace -- used as the cache key for both the offline and Google
     translators, so trivially-different inputs share one cache entry."""
@@ -62,7 +63,7 @@ def normalize_source_text(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def polish_translation(text):
+def polish_translation(text: str) -> str:
     """Fix deterministic model artifacts without rewriting valid content."""
     text = re.sub(r"\s+([,.;:!?])", r"\1", text).strip()
     text = re.sub(r"\bseve data\b", "save data", text, flags=re.IGNORECASE)
@@ -78,7 +79,11 @@ def polish_translation(text):
 class OfflineJapaneseTranslator:
     """Thread-owned local translator with memory + persistent SQLite caching."""
 
-    def __init__(self, cache_path, model_dir=None):
+    def __init__(
+        self,
+        cache_path: Union[str, Path],
+        model_dir: Optional[Union[str, Path]] = None,
+    ) -> None:
         """Load the CTranslate2 engine and SentencePiece processors, and open
         the shared translation cache DB (see GooglePhraseTranslator.__init__
         for why it's the same file, opened via a separate connection).
@@ -143,9 +148,9 @@ class OfflineJapaneseTranslator:
             """
         )
         self.connection.commit()
-        self.memory_cache = OrderedDict()
+        self.memory_cache: "OrderedDict[str, str]" = OrderedDict()
 
-    def _remember(self, source_text, translated_text):
+    def _remember(self, source_text: str, translated_text: str) -> None:
         """Insert/refresh an entry in the bounded in-memory LRU cache,
         evicting the least-recently-used entry once over MEMORY_CACHE_SIZE."""
         self.memory_cache[source_text] = translated_text
@@ -153,7 +158,7 @@ class OfflineJapaneseTranslator:
         while len(self.memory_cache) > MEMORY_CACHE_SIZE:
             self.memory_cache.popitem(last=False)
 
-    def _cached(self, source_text):
+    def _cached(self, source_text: str) -> Tuple[Optional[str], Optional[str]]:
         """Look up source_text in memory first, then the persistent disk
         cache keyed by (model_id, source_text) -- the model_id component
         means switching model versions can't return a stale translation
@@ -186,7 +191,7 @@ class OfflineJapaneseTranslator:
         self._remember(source_text, translated)
         return translated, "disk"
 
-    def translate(self, text):
+    def translate(self, text: str) -> Tuple[str, str, float]:
         """Translate text with the local CTranslate2 model: cache check,
         then SentencePiece-encode, beam-search decode, SentencePiece-decode,
         and polish_translation() cleanup. max_decoding_length scales with
@@ -199,6 +204,7 @@ class OfflineJapaneseTranslator:
 
         cached, cache_kind = self._cached(source_text)
         if cached is not None:
+            assert cache_kind is not None  # _cached always pairs these two
             return cached, cache_kind, 0.0
 
         started = time.perf_counter()
@@ -237,7 +243,7 @@ class OfflineJapaneseTranslator:
         self._remember(source_text, translated)
         return translated, "model", elapsed_ms
 
-    def close(self):
+    def close(self) -> None:
         """Close the cache DB connection; failures are swallowed since this
         runs during best-effort shutdown."""
         try:
