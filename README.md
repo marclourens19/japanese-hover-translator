@@ -10,9 +10,19 @@ It combines cursor-anchored OCR, local JMdict word definitions, phrase translati
 furigana, dictionary-form breakdowns, pin/save hotkeys, SM-2 spaced repetition, and a
 light-mode desktop dashboard — no cloud account, API key, or subscription required.
 
-![Dashboard](docs/dashboard.png)
-
-![Pinned hover popup](docs/hover-popup.png)
+<p align="center">
+  <img src="docs/hover-popup.png" alt="Hover popup with furigana, translation, and dictionary form" width="100%">
+</p>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/dashboard.png" alt="Overview dashboard"></td>
+    <td width="50%"><img src="docs/saved-words.png" alt="Saved words library"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/study-review.png" alt="Spaced-repetition study review"></td>
+    <td width="50%"><img src="docs/settings.png" alt="Settings page"></td>
+  </tr>
+</table>
 
 **Status:** actively developed, expect rough edges. Running from source
 (`python src/dashboard_app.py`) leaves a console window open in the background, since
@@ -207,8 +217,6 @@ which prevents accidental saves from fleeting hover results.
 
 ## Spaced-repetition study
 
-![Focused review mode](docs/study-review.png)
-
 Open **Saved Words** and choose **Review due cards**. New cards are due immediately;
 after revealing the answer, grade your recall with **Again**, **Hard**, **Good**, or
 **Easy** (keyboard shortcuts 1–4). The SM-2 scheduler stores each card's interval,
@@ -221,11 +229,9 @@ six-day review interval, while other saved cards enter the due queue immediately
 The Saved Words page shows each card's stage and next review, and lets you reset an
 individual schedule without deleting the word.
 
-The Saved Words page supports instant Japanese/English search and quick **All words** / 
+The Saved Words page supports instant Japanese/English search and quick **All words** /
 **Due now** filtering. Selecting an item opens a fixed detail panel with its meaning,
 dictionary form, learning stage, next review, interval, ease, reviews, and lapses.
-
-![Saved word library](docs/saved-words.png)
 
 ## Data and privacy
 
